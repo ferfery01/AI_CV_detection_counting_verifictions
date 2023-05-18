@@ -1,0 +1,166 @@
+---
+# This section is used to define triggers for the pipeline specifically
+# when Pull Requests (PRs) are created or updated.
+pr:
+    branches:
+        include:
+            - '*'
+
+# This section is used to define and assign values to variables that can
+# be used throughout the pipeline.
+variables:
+    pythonVersion: 3.10
+    pipDownloadDir: $(Pipeline.Workspace)/.pip
+
+# This section is used to define the stages of the pipeline. Each stage
+# can contain one or more jobs. Each job can contain one or more steps.
+jobs:
+    - job: rx_connect_install_and_test
+      displayName: RxConnect-Install and Test
+      pool:
+          vmImage: ubuntu-latest
+      container:
+          image: continuumio/miniconda3:23.3.1-0
+      steps:
+          - checkout: self
+          - bash: |
+                export PATH=$PATH:/home/vsts_azpcontainer/.local/bin
+                PROJECT="rx_connect"
+                BLACK="true"
+                MYPY="true"
+                FLAKE="true"
+                ISORT="true"
+
+                REQS="$(pwd)/setup.cfg"
+                CONF_BLACK="$(pwd)/.black.toml"
+                CONF_ISORT="$(pwd)/.isort.cfg"
+                CONF_FLAKE="$(pwd)/.flake8"
+                echo "Project:              ${PROJECT}"
+                echo "Python version:       $(python --version)"
+                echo "Use black?:           ${BLACK}"
+                echo "Use flake8?:          ${FLAKE}"
+                echo "Use isort?:           ${ISORT}"
+                echo "Use mypy?:            ${MYPY}"
+                echo "-------------------------------------"
+
+                pushd "${PROJECT}/"
+                get_tool_version()  { echo $(grep $1 $REQS | awk -F "==" '{print $2}'); }
+
+                ERROR_BLACK="0"
+                if [[ "${BLACK}" == "true" ]]; then
+                  V=$(get_tool_version "black")
+                  echo "**************************************************"
+                  echo "black: ${V} - checking formatting"
+                  pip install --disable-pip-version-check -q black=="${V}"
+                  echo "**************************************************"
+                  black --config "${CONF_BLACK}" . || true
+                  ERROR_BLACK="$(git diff --name-only | wc -l)"
+                  git reset --hard HEAD
+                fi
+
+                ERROR_ISORT="0"
+                if [[ "${ISORT}" == "true" ]]; then
+                  V=$(get_tool_version "isort")
+                  echo "**************************************************"
+                  echo "isort: ${V} - checking import ordering"
+                  pip install --disable-pip-version-check -q isort=="${V}"
+                  echo "**************************************************"
+                  # Using global .isort.cfg in root directory
+                  isort --check-only --settings-path "${CONF_ISORT}" . 2> isort.txt || true
+                  cat isort.txt
+                  ERROR_ISORT="$(cat isort.txt | wc -l)"
+                fi
+
+                ERROR_FLAKE="0"
+                if [[ "${FLAKE}" == "true" ]]; then
+                   V=$(get_tool_version "flake8")
+                  echo "**************************************************"
+                  echo "flake8: ${V} - linting"
+                  pip install --disable-pip-version-check -q flake8=="${V}"
+                  echo "**************************************************"
+                  # Using global flake8 config in root directory
+                  flake8 --config "${CONF_FLAKE}" . --output-file flake8.txt || true
+                  cat flake8.txt
+                  ERROR_FLAKE="$(cat flake8.txt | wc -l)"
+                fi
+
+                ERROR_MYPY="0"
+                if [[ "${MYPY}" == "true" ]]; then
+                  V=$(get_tool_version "mypy")
+                  echo "**************************************************"
+                  echo "mypy: ${V} - type checking"
+                  pip install --disable-pip-version-check -q mypy=="${V}"
+                  echo "**************************************************"
+
+                  # run static type checking, record all output & ensure that mypy doesn't return a non-zero exit code
+                  mypy --ignore-missing-imports --install-types --non-interactive --follow-imports=silent --show-column-numbers --no-error-summary --namespace-packages --explicit-package-bases $(find . -type f -name "*.py") 2> mypy.log || true
+                  ERROR_MYPY="$(cat mypy.log | grep 'error:' | wc -l)"
+
+                  # because we build the project to make the code available, this can lead to
+                  # mypy checking the same code twice because it's been duplicated to build/lib/...
+                  cat mypy.log | grep -v '^build/lib/' > __mypy.log && mv __mypy.log mypy.log
+
+                  set +e
+                  ERROR_MYPY="$(cat mypy.log | grep 'error:' | wc -l)"
+                  set -e
+                fi
+
+                popd
+
+                if [[ "${BLACK}" == "true" ]]; then
+                  echo "BLACK: There were ${ERROR_BLACK} files that needed to be formatted"
+                fi
+
+                if [[ "${FLAKE}" == "true" ]]; then
+                  echo "FLAKE8: There were ${ERROR_FLAKE} linter problems found."
+                fi
+
+                if [[ "${ISORT}" == "true" ]]; then
+                  echo "ISORT: There were ${ERROR_ISORT} files that need to sort imports."
+                fi
+
+                if [[ "${MYPY}" == "true" ]]; then
+                  echo "MYPY: There were ${ERROR_MYPY} type errors deduced."
+                fi
+
+                if [[ "${ERROR_BLACK}" != "0" || "${ERROR_FLAKE}" != "0" || "${ERROR_ISORT}" != "0" || "${ERROR_MYPY}" != "0" ]]; then
+                  echo "Failed linting"
+                  exit 1
+                else
+                  echo "Linting success"
+                  exit 0
+                fi
+            displayName: Run python linters
+
+          - bash: mkdir -p $(pipDownloadDir)
+            displayName: Create pip cache directory
+
+          - task: Cache@2
+            inputs:
+                key: pip | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | setup.cfg
+                restoreKeys: |
+                    pip | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | setup.cfg
+                    pip | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt
+                    pip | "$(Agent.OS)" | "$(pythonVersion)"
+                    pip | "$(Agent.OS)"
+                path: $(pipDownloadDir)
+            displayName: Cache pip packages
+
+          - bash: |
+                # Create a new virtual environment
+                echo "***************************************************"
+                echo "* Creating and activating a new conda environment *"
+                echo "***************************************************"
+                conda create --name myenv python=$(pythonVersion) --quiet -y
+                source activate myenv
+
+                echo "**************************************************"
+                echo "******** Installing required dependencies ********"
+                echo "**************************************************"
+                pip install -r requirements.txt
+
+                echo "**************************************************"
+                echo "**** Installing project and dev dependencies *****"
+                echo "**************************************************"
+                pip install -e ".[dev]"
+            displayName: Install dependencies and project
