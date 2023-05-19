@@ -1,3 +1,9 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
 # Distribution / packaging
 .Python
 build/
@@ -16,3 +22,10 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# editor
+.vscode
+**/.idea/
+**/scratch/
+*.swp
+.vim/
