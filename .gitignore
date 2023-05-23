@@ -33,7 +33,6 @@ MANIFEST
 *.swp
 .vim/
 
-
 # Dataset
 data/
 ePill**/
@@ -45,3 +44,6 @@ ePill**/
 *.jpg
 *.jpeg
 *.png
+
+#local_example
+examples/
