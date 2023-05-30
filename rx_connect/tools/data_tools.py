@@ -7,7 +7,7 @@ def fetch_from_remote(
     remote_path: str,
     server_ip: str = "10.231.51.79",
     local_cache_folder: str = "local_cache",
-    ignore_exist=False,
+    ignore_exist: bool = False,
 ) -> str:
     """
     Fetch data from remote server if not yet cached.
@@ -70,7 +70,7 @@ def push_to_remote(
     )
     assert remote_folder_exist, f"Error: Remote folder {remote_storage_folder} doesn't exist on {server_ip}."
 
-    remote_path = remote_storage_folder + "/" + local_path_obj.name
+    remote_path = f"{remote_storage_folder}/{local_path_obj.name}"
     subprocess.run(["rsync", "-rq", local_path_obj, f"{server_ip}:{remote_path}"])
 
     return remote_path
