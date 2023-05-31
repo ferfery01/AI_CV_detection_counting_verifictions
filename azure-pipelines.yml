@@ -92,8 +92,14 @@ jobs:
                   pip install --disable-pip-version-check -q mypy=="${V}"
                   echo "**************************************************"
 
+                  echo "Installing all the stub packages for mypy..."
+                  while IFS= read -r line; do
+                      pip install "$line"
+                  done < <(grep "types" $REQS)
+
                   # run static type checking, record all output & ensure that mypy doesn't return a non-zero exit code
-                  mypy --ignore-missing-imports --install-types --non-interactive --follow-imports=silent --show-column-numbers --no-error-summary --namespace-packages --explicit-package-bases $(find . -type f -name "*.py") 2> mypy.log || true
+                  mypy --ignore-missing-imports --follow-imports=silent --show-column-numbers --no-error-summary --namespace-packages --explicit-package-bases $(find . -type f -name "*.py") 2> mypy.log || true
+                  cat mypy.log
                   ERROR_MYPY="$(cat mypy.log | grep 'error:' | wc -l)"
 
                   # because we build the project to make the code available, this can lead to
