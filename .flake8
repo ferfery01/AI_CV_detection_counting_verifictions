@@ -1,4 +1,5 @@
 [flake8]
+ignore = E266, W503
 extend-ignore = E203
 exclude =
     # No need to traverse our git directory
