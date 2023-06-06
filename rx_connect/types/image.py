@@ -67,7 +67,7 @@ class RxImageBase:
 
 class RxImageCount(RxImageBase):
     """
-    Image class for count counting methods. This class inherits from RxImageBase for the loading methods.
+    Image class for counting methods. This class inherits from RxImageBase for the loading methods.
     """
 
     def __init__(self, inherit_image: Optional[RxImageBase] = None):

@@ -16,6 +16,9 @@ from rx_connect.dataset_generator.io_utils import (
     load_pill_mask_paths,
 )
 from rx_connect.dataset_generator.object_overlay import generate_random_bg
+from rx_connect.wbaml.utils.logging import setup_logger
+
+logger = setup_logger()
 
 
 def generate_samples(
@@ -148,8 +151,8 @@ def generate_samples(
     help="The number of CPU cores to use",
 )
 def main(
-    pill_mask_path: Path,
-    bg_img_path: Optional[Path],
+    pill_mask_path: Union[str, Path],
+    bg_img_path: Optional[Union[str, Path]],
     output_folder: Union[str, Path],
     n_images: int,
     n_pill_types: int,
@@ -162,9 +165,13 @@ def main(
     allow_pills_outside: bool,
     num_cpu: int,
 ):
+    # Convert paths to Path objects
+    pill_mask_path = Path(pill_mask_path)
+    bg_img_path = Path(bg_img_path) if bg_img_path is not None else None
+
     # Load pill mask paths
     pill_mask_paths = load_pill_mask_paths(pill_mask_path)
-    print(f"Found {len(pill_mask_paths)} pill masks.")
+    logger.info(f"Found {len(pill_mask_paths)} pill masks.")
 
     # Create output folder
     output_path = Path(output_folder)
@@ -206,8 +213,8 @@ def main(
         for idx in trange(n_images, desc="Generating images")
     )
 
-    print("Annotations are saved to the folder: ", output_path / "labels")
-    print("Images are saved to the folder: ", output_path / "images")
+    logger.info("Annotations are saved to the folder: ", output_path / "labels")
+    logger.info("Images are saved to the folder: ", output_path / "images")
 
 
 if __name__ == "__main__":

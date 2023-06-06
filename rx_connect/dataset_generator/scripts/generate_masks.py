@@ -12,6 +12,9 @@ from rx_connect.dataset_generator.sam_utils import (
     get_best_mask_per_images,
     predict_masks,
 )
+from rx_connect.wbaml.utils.logging import setup_logger
+
+logger = setup_logger()
 
 
 def generate_final_mask(
@@ -27,7 +30,7 @@ def generate_final_mask(
     mask = apply_grabcut(image, mask_per_image[0], num_iterations)
     final_mask = post_process_mask(mask)
     if verbose:
-        print(f"Saving mask for {image_path.name} to {output_masks_path / image_path.name}")
+        logger.info(f"Saving mask for {image_path.name} to {output_masks_path / image_path.name}")
 
     cv2.imwrite(str(output_masks_path / image_path.name), final_mask)
 
@@ -38,7 +41,7 @@ def images_to_mask(input_images_path: Path, output_masks_path: Path) -> List[Pat
 
     images_to_mask: Set[str] = input_images.difference(output_masks)
     images_to_mask_path: List[Path] = [input_images_path / img_name for img_name in images_to_mask]
-    print(f"Found {len(images_to_mask_path)} images to mask.")
+    logger.info(f"Found {len(images_to_mask_path)} images to mask.")
 
     return images_to_mask_path
 

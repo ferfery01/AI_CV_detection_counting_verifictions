@@ -4,6 +4,7 @@ joblib==1.2.0
 matplotlib==3.7.1
 numpy==1.23.0
 opencv-python==4.7.0.72
+rich==13.4.1
 super_gradients @ git+https://github.com/Deci-AI/super-gradients.git
 torch==2.0.1
 torchvision==0.15.2

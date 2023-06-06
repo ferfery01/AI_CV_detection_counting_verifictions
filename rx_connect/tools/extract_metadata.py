@@ -3,6 +3,11 @@ from typing import List, Optional, TypedDict
 import requests
 from bs4 import BeautifulSoup
 
+from rx_connect.wbaml.utils.logging import setup_logger
+
+logger = setup_logger()
+
+
 _TAGS: List[str] = ["Imprint", "Color", "Shape", "Strength"]
 
 
@@ -32,7 +37,7 @@ def parse_drug_info(ndc_code: str) -> Optional[BeautifulSoup]:
 
         soup = BeautifulSoup(response.content, "html.parser")
     except requests.RequestException as e:
-        print("Error accessing the website:", e)
+        logger.error("Error accessing the website:", e)
 
     return soup
 
@@ -53,8 +58,7 @@ def parse_drug_name(soup: BeautifulSoup) -> Optional[str]:
 
 
 def parse_tags(soup: BeautifulSoup, string: str) -> Optional[str]:
-    """
-    Extracts unique tag values from the provided BeautifulSoup object based on
+    """Extracts unique tag values from the provided BeautifulSoup object based on
     the given string.
 
     Args:

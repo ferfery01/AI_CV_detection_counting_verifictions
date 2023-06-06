@@ -36,6 +36,7 @@ MANIFEST
 # Dataset
 data/
 ePill**/
+dataset/**
 
 # Checkpoints
 **/checkpoints/**
@@ -45,5 +46,5 @@ ePill**/
 *.jpeg
 *.png
 
-#local_example
+# local_example
 examples/
