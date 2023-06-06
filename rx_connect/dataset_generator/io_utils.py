@@ -1,55 +1,118 @@
+import random
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, List, NamedTuple, Optional, Sequence, Tuple, Union
 
-import cv2
 import numpy as np
+from skimage import io
 
 from rx_connect.dataset_generator.transform import resize_bg
+from rx_connect.wbaml.utils.logging import setup_logger
+
+logger = setup_logger()
 
 
-def load_pill_mask_paths(pill_mask_dir: Path) -> List[Tuple[Path, Path]]:
-    """Load the pill image and the corresponding mask paths.
+class PillMaskPaths(NamedTuple):
+    """The paths to the pill image and mask."""
+
+    imgs_path: Sequence[Path]
+    masks_path: Sequence[Path]
+
+
+class PillMask(NamedTuple):
+    """The pill image and mask."""
+
+    img: np.ndarray
+    mask: np.ndarray
+
+
+def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
+    """Load all the pill images and the corresponding masks path.
 
     Args:
-        pill_mask_dir: The directory containing the pill images and masks.
+        data_dir: The directory containing all the pill images and the corresponding
+            masks.
 
     Returns:
         pill_mask_paths: The paths to the pill image and mask.
     """
-    pill_mask_paths: List[Tuple[Path, Path]] = [
-        (p, pill_mask_dir / "masks" / p.name) for p in (pill_mask_dir / "images").glob("*.jpg")
-    ]
-    return pill_mask_paths
+    imgs_path = tuple((Path(data_dir) / "images").glob("*.jpg"))
+    masks_path = tuple((Path(data_dir) / "masks").glob("*.jpg"))
+
+    if len(imgs_path) == 0:
+        raise FileNotFoundError(f"Could not find any pill images in {data_dir}/images.")
+
+    if len(imgs_path) != len(masks_path):
+        raise ValueError(f"Number of images ({len(imgs_path)}) and masks ({len(masks_path)}) do not match.")
+
+    logger.info(f"Found {len(imgs_path)} pill images and masks.")
+
+    return PillMaskPaths(imgs_path, masks_path)
 
 
-def get_img_and_mask(pill_mask_paths: Tuple[Path, Path], thresh: int = 25) -> Tuple[np.ndarray, np.ndarray]:
+def load_image_and_mask(image_path: Path, mask_path: Path, thresh: int = 25) -> PillMask:
     """Get the image and mask from the pill mask paths.
 
     Args:
-        pill_mask_paths: The paths to the pill image and mask.
+        image: The path to the pill image.
+        mask: The path to the pill mask.
         thresh: The threshold at which to binarize the mask.
 
     Returns:
         img: The pill image.
         mask: The pill mask.
     """
-    img_path, mask_path = pill_mask_paths
-    img = cv2.imread(str(img_path))
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Load the pill image
+    image = io.imread(image_path)
 
+    # Load the pill mask
     try:
-        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+        mask = io.imread(mask_path, as_gray=True)
+        # Binarize the mask
         mask[mask <= thresh] = 0
         mask[mask > thresh] = 1
     except Exception as e:
         raise FileNotFoundError(
-            f"Could not find mask for image {img_path.name}. Did you run `python -m countpillar/generate_masks.py`?"
+            f"Could not find mask for image {image_path.name}. Did you run `python -m mask_generator`?"
         ) from e
 
-    return img, mask
+    return PillMask(img=image, mask=mask)
 
 
-def load_bg_image(path: Path, min_dim: int, max_dim) -> np.ndarray:
+def load_random_pills_and_masks(
+    images_path: Sequence[Path],
+    masks_path: Sequence[Path],
+    *,
+    pill_types: int = 1,
+    thresh: int = 25,
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    """Load `pill_types` random pills and masks from the given paths.
+
+    Args:
+        images_path: The paths to the pill images.
+        masks_path: The paths to the pill masks.
+        pill_types: The number of pills to sample.
+        thresh: The threshold at which to binarize the mask.
+
+    Returns:
+        Tuple of lists of all pill images and masks.
+    """
+    pill_images: List[np.ndarray] = []
+    pill_masks: List[np.ndarray] = []
+
+    # Randomly sample `pill_types` pills
+    for _ in range(pill_types):
+        # Randomly sample a pill image and mask
+        idx = np.random.randint(len(images_path))
+        image_path, mask_path = images_path[idx], masks_path[idx]
+
+        pill_img, pill_mask = load_image_and_mask(image_path, mask_path, thresh=thresh)
+        pill_images.append(pill_img)
+        pill_masks.append(pill_mask)
+
+    return pill_images, pill_masks
+
+
+def load_bg_image(path: Path, min_dim: int = 1024, max_dim: int = 1920) -> np.ndarray:
     """Load and resize the background image.
 
     Args:
@@ -60,45 +123,74 @@ def load_bg_image(path: Path, min_dim: int, max_dim) -> np.ndarray:
     Returns:
         bg_img: The background image as a numpy array.
     """
-    bg_img = cv2.imread(str(path))
-    bg_img = cv2.cvtColor(bg_img, cv2.COLOR_BGR2RGB)
+    # Load the background image
+    bg_img = io.imread(path)
+
+    # Resize the background image
     bg_img = resize_bg(bg_img, max_dim, min_dim)
 
     return bg_img
 
 
-def create_yolo_annotations(mask_comp: np.ndarray, labels_comp: List[int]) -> List[List[float]]:
-    """Create YOLO annotations from a composition mask.
+def generate_random_bg(height: int, width: int, color_tint: int = 10) -> np.ndarray:
+    """Generate a random background image.
 
     Args:
-        mask_comp: The composition mask.
-        labels_comp: The labels of the composition.
+        height (int): height of the background image.
+        width (int): width of the background image.
+        color_tint (int): Controls the aggressiveness of the color tint applied to the
+            background. The higher the value, the more aggressive the color tint. The value
+            should be between 0 and 10.
 
     Returns:
-        annotations_yolo: The YOLO annotations.
+        np.ndarray: random background image.
     """
-    comp_w, comp_h = mask_comp.shape[1], mask_comp.shape[0]
+    assert 0 <= color_tint <= 10, "color_tint should be between 0 and 10."
 
-    obj_ids = np.unique(mask_comp).astype(np.uint8)[1:]
-    masks = mask_comp == obj_ids[:, None, None]
+    # Generate a random color for the background
+    background_color = np.random.randint(max(0, 200 - color_tint * 10), 256, size=(3,)).tolist()
 
-    annotations_yolo: List[List[float]] = []
-    for i in range(len(labels_comp)):
-        pos = np.where(masks[i])
-        xmin, xmax = np.min(pos[1]), np.max(pos[1])
-        ymin, ymax = np.min(pos[0]), np.max(pos[0])
+    # Create a black background image
+    background_image = np.zeros((height, width, 3), np.uint8)
 
-        xc, yc = (xmin + xmax) / 2, (ymin + ymax) / 2
-        w, h = xmax - xmin, ymax - ymin
+    # Fill the background image with the random color
+    background_image[:] = background_color
 
-        annotations_yolo.append(
-            [
-                labels_comp[i] - 1,
-                round(float(xc / comp_w), 5),
-                round(float(yc / comp_h), 5),
-                round(float(w / comp_w), 5),
-                round(float(h / comp_h), 5),
-            ]
-        )
+    return background_image
 
-    return annotations_yolo
+
+def get_background_image(
+    path: Optional[Union[str, Path]] = None,
+    min_bg_dim: int = 2160,
+    max_bg_dim: int = 3840,
+    **kwargs: Any,
+) -> np.ndarray:
+    """Get the background image.
+        1. If no background image path is provided, generate a random color background
+        2. If a background image path is provided, load it directly
+        3. If a directory of background images is provided, choose a random image
+
+    Args:
+        path: Path to the background image or directory of background images
+        min_bg_dim: Minimum dimension of the background image
+        max_bg_dim: Maximum dimension of the background image
+
+    Returns:
+        Background image as a numpy array resized to the specified dimensions
+    """
+    if path is None:
+        # Generate random color background if no background image is provided
+        bg_image = generate_random_bg(min_bg_dim, max_bg_dim, **kwargs)
+    else:
+        path = Path(path)
+        if path.is_file():
+            # If a background image path is provided, load it
+            bg_image = load_bg_image(path, min_bg_dim, max_bg_dim)
+        elif path.is_dir():
+            # If a directory of background images is provided, choose a random image
+            paths = list(path.glob("*.jpg"))
+            bg_image = load_bg_image(random.choice(paths), min_bg_dim, max_bg_dim)
+        else:
+            raise FileNotFoundError(f"Could not find background image file or directory at {path}.")
+
+    return bg_image

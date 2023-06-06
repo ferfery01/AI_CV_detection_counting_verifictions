@@ -3,7 +3,7 @@ from typing import List, Optional, TypedDict
 import requests
 from bs4 import BeautifulSoup
 
-from rx_connect.wbaml.utils.logging import setup_logger
+from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
 

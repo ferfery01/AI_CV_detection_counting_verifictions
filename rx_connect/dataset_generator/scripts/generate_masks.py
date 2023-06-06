@@ -12,7 +12,7 @@ from rx_connect.dataset_generator.sam_utils import (
     get_best_mask_per_images,
     predict_masks,
 )
-from rx_connect.wbaml.utils.logging import setup_logger
+from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
 

@@ -39,16 +39,26 @@ def resize_bg(img: np.ndarray, desired_max: int = 1920, desired_min: Optional[in
 
 
 def resize_and_transform_pill(
-    img: np.ndarray,
+    image: np.ndarray,
     mask: np.ndarray,
-    longest_max: int = 224,
     longest_min: int = 224,
+    longest_max: int = 224,
     augmentations: Optional[A.BasicTransform] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Resize the pill image and the corresponding mask to the given height and width.
     Also, apply some random augmentations to the pill image.
+
+    Args:
+        image: pill image as a numpy array.
+        mask: binary mask of the pill image.
+        longest_min: minimum size of the longest side of the resized image.
+        longest_max: maximum size of the longest side of the resized image.
+        augmentations: augmentations to apply to the pill image.
+
+    Returns:
+        tuple of transformed pill image and mask.
     """
-    height, width = img.shape[:2]
+    height, width = image.shape[:2]
 
     long_side = max(height, width)
     short_side = min(height, width)
@@ -59,12 +69,12 @@ def resize_and_transform_pill(
     short_new = int(short_side * long_new / long_side)
     h_new, w_new = (long_new, short_new) if height > width else (short_new, long_new)
 
-    # Resize the image to the new size.
+    # Resize the image to the provided size.
     transform_resize = A.Resize(height=h_new, width=w_new)
-    transform_resized = transform_resize(image=img, mask=mask)
+    transform_resized = transform_resize(image=image, mask=mask)
     img_t, mask_t = transform_resized["image"], transform_resized["mask"]
 
-    # Apply some random augmentations to the pill image.
+    # Initialize the augmentations if not provided.
     augmentations = augmentations or A.Compose(
         [
             A.Rotate(limit=90, border_mode=0, mask_value=0, p=1.0),
@@ -73,10 +83,10 @@ def resize_and_transform_pill(
                 contrast_limit=0.02,
                 brightness_by_max=True,
             ),
-            A.RandomCrop(p=0.5, height=200, width=200),
         ]
     )
 
+    # Apply the augmentations to the image.
     transforms_aug = augmentations(image=img_t, mask=mask_t)
     img_t, mask_t = transforms_aug["image"], transforms_aug["mask"]
 

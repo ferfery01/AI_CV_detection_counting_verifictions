@@ -77,4 +77,21 @@ def setup_logger(log_level: int = logging.INFO) -> logging.Logger:
     # Add the console handler to the logger
     logger.addHandler(handler)
 
+    def assert_method(condition: bool, message: str, stacklevel: int = 2) -> None:
+        """
+        Assert a condition and log the exception if it fails.
+
+        Args:
+            condition (bool): The condition to assert.
+            message (str): The message to log if the condition fails.
+            stacklevel (int): The stacklevel to log the exception at.
+        """
+        try:
+            assert condition, message
+        except AssertionError as e:
+            logger.exception(message, stack_info=True, exc_info=True, stacklevel=stacklevel)
+            raise e
+
+    logger.__dict__.update({"assertion": assert_method})
+
     return logger

@@ -2,7 +2,10 @@
 Rx-Connect is an innovative cloud-based software system designed to streamline the prescription verification process in pharmacies. By leveraging state-of-the-art AI modules, Rx-Connect provides a platform for virtual verification and pharmacy operations, enhancing patient care, increasing efficiency, safety, and cost-effectiveness while reducing preventable medical errors.
 
 ## Features
-TODO: Add features here as a bullet points.
+1. **Dataset Generator:** The aim of this module is to provide APIs for generate synthetic dataset for Pill Counting Module. For more details, take a look at this [readme](rx_connect/dataset_generator/README.md).
+2. **Pill Counting:** The aim of this module is to provide scripts for training and evaluating YOLO-NAS model. Additionally, it provides APIs to get the bounding boxes for Pill Segmentation Module as well as provide the ability to get the count of pills in an image. For more details, take a look at this [readme](rx_connect/pill_counting/README.md).
+3. **Pill Segmentation**:
+4. **Pill Validation:**:
 
 
 ## Development Setup

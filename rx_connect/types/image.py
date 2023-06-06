@@ -1,9 +1,18 @@
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
+import torch
+import torchshow as ts
+from PIL import Image
+from skimage import io
 
+from rx_connect.dataset_generator.service import RxImageGenerator
 from rx_connect.tools.casting import safe_cast
+from rx_connect.tools.logging import setup_logger
+
+logger = setup_logger()
 
 
 class RxImageBase:
@@ -11,25 +20,25 @@ class RxImageBase:
     Base class for RxImage objects. This class implements the loading methods.
     """
 
-    def __init__(self):
-        self._image = None
+    def __init__(self) -> None:
+        self._image: Optional[np.ndarray] = None
 
-    def load_from_path(self, path: str):
+    def load_from_path(self, path: Union[str, Path]) -> None:
         """
         Loads the image from the given path.
 
         Args:
             path (str): Path to the image file.
         """
-        self._image = cv2.imread(path)
+        self._image = io.imread(path)
 
-    def load_from_camera(self):
+    def load_from_camera(self) -> None:
         """
         Loads the image from default camera.
         """
         self._image = cv2.VideoCapture(0)
 
-    def load_ndarray(self, image: np.ndarray):
+    def load_ndarray(self, image: np.ndarray) -> None:
         """
         Loads the image from the given numpy array.
 
@@ -38,17 +47,46 @@ class RxImageBase:
         """
         self._image = image
 
-    def load_from_generator(self, generator_obj):
-        """
-        Loads the image from the given generator object.
+    def load_tensor(self, image: torch.Tensor) -> None:
+        """Loads the image from the given torch tensor.
 
         Args:
-            generator_obj (Generator): Generator object.
+            image (torch.Tensor): Image as torch tensor.
         """
-        raise NotImplementedError
-        # self._image = generator.gen_image()
+        self._image = image.numpy()
 
-    def load_dummy_test(self):
+    def load_PIL_image(self, image: Image.Image) -> None:
+        """Loads the image from the given PIL image.
+
+        Args:
+            image (Image.Image): Image as PIL image.
+        """
+        self._image = np.array(image)
+
+    def load_image(self, image: Union[np.ndarray, torch.Tensor, Image.Image]) -> None:
+        """Loads the image from the given image object.
+
+        Args:
+            image (Union[np.ndarray, torch.Tensor, Image]): Image as image object.
+        """
+        if isinstance(image, np.ndarray):
+            self.load_ndarray(image)
+        elif isinstance(image, torch.Tensor):
+            self.load_tensor(image)
+        elif isinstance(image, Image.Image):
+            self.load_PIL_image(image)
+        else:
+            raise TypeError(f"Image type {type(image)} not supported.")
+
+    def load_from_generator(self, generator_obj: RxImageGenerator) -> None:
+        """Loads the image from the given generator object.
+
+        Args:
+            generator_obj (Generator): Image Generator object.
+        """
+        self._image = generator_obj.generate()
+
+    def load_dummy_test(self) -> None:
         """
         Dummy load funciton to generate random test images.
         """
@@ -61,8 +99,17 @@ class RxImageBase:
         Returns:
             np.ndarray: Loaded image.
         """
-        assert self._image is not None, "Image not loaded."
+        logger.assertion(self._image is not None, "Image not loaded.")  # type: ignore
         return self._image
+
+    def visualize(self) -> None:
+        """Utility function to visualize image stored in the object."""
+        ts.show(self.image)
+
+    @property
+    def image(self) -> np.ndarray:
+        """Access the image property."""
+        return self.get_image()
 
 
 class RxImageCount(RxImageBase):
@@ -96,7 +143,7 @@ class RxImageCount(RxImageBase):
         """
         Check if the counter object has been set, and count the number of pills in the image.
         """
-        assert self._counterObj is not None, "Counter object not set."
+        logger.assertion(self._counterObj is not None, "Counter object not set.")
         self._bounding_boxes = self._counterObj.count(self.get_image())
 
     def get_bounding_boxes(self) -> List[Tuple[Tuple[int, int, int, int], float]]:
@@ -126,7 +173,7 @@ class RxImageCount(RxImageBase):
         Returns:
             List[np.ndarray]: List of cropped image views.
         """
-        return [self._image[x : (x + w), y : (y + h)] for (x, y, w, h), _ in self.get_bounding_boxes()]
+        return [self.image[x : (x + w), y : (y + h)] for (x, y, w, h), _ in self.get_bounding_boxes()]
 
 
 class RxImageCountSegment(RxImageCount):
@@ -161,14 +208,14 @@ class RxImageCountSegment(RxImageCount):
         """
         Check if the segmenter object has been set, and segment the full image.
         """
-        assert self._segmenterObj is not None, "Segmenter object not set."
+        logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
         self._seg_mask_full = self._segmenterObj.segment(self.get_image())
 
     def _segment_ROI(self):
         """
         Check if the segmenter object has been set, and segment the ROI.
         """
-        assert self._segmenterObj is not None, "Segmenter object not set."
+        logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
         self._seg_mask_ROI = [self._segmenterObj.segment(ROI) for ROI in self.get_ROI()]
 
     def get_full_segmentation(self) -> np.ndarray:

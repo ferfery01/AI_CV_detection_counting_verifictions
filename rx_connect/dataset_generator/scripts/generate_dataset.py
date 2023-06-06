@@ -1,55 +1,89 @@
-import random
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
 import cv2
-import numpy as np
 from joblib import Parallel, delayed
 from tqdm import trange
 
-from rx_connect.dataset_generator.composition import create_pill_comp
+from rx_connect.dataset_generator.annotations import create_yolo_annotations
+from rx_connect.dataset_generator.composition import generate_image
 from rx_connect.dataset_generator.io_utils import (
-    create_yolo_annotations,
-    load_bg_image,
+    get_background_image,
     load_pill_mask_paths,
+    load_random_pills_and_masks,
 )
-from rx_connect.dataset_generator.object_overlay import generate_random_bg
-from rx_connect.wbaml.utils.logging import setup_logger
+from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
 
+_YOLO_LABELS = "labels"
+_SEGMENTATION_LABELS = "comp_masks"
+
+
+def create_folders(output_path: Path, mode: str) -> Tuple[Path, Path]:
+    """Create the output folder and subfolders depending on the mode.
+
+    Args:
+        output_path (Union[str, Path]): The path to the output folder.
+        mode (str): The mode of the dataset generation. Can be either "detection" or "segmentation".
+    """
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    img_path = output_path / mode / "images"
+    img_path.mkdir(parents=True, exist_ok=True)
+
+    label_path = output_path / mode / f"{_YOLO_LABELS if mode == 'detection' else _SEGMENTATION_LABELS}"
+    label_path.mkdir(parents=True, exist_ok=True)
+
+    return img_path, label_path
+
 
 def generate_samples(
-    bg_img: Optional[np.ndarray],
-    bg_img_path: Optional[Path],
-    bg_img_paths: List[Path],
+    bg_img_path: Optional[Union[str, Path]],
+    images_path: List[Path],
+    masks_path: List[Path],
     output_folder: Path,
     min_bg_dim: int,
     max_bg_dim: int,
-    idx,
+    num_pills_type: int,
+    idx: int,
+    mode: str,
     **kwargs,
 ) -> None:
     """Generate and save a single sample along with its annotation."""
-    # Generate random color background if no background image is provided
-    # or if a directory of background images is provided, choose a random image
-    if bg_img_path is None:
-        bg_img = generate_random_bg(min_bg_dim, max_bg_dim)
-    elif bg_img_path.is_dir():
-        bg_img = load_bg_image(random.choice(bg_img_paths), min_bg_dim, max_bg_dim)
-    assert bg_img is not None, "Background image is None"
+    # First, generate a background image
+    bg_image = get_background_image(bg_img_path, min_bg_dim, max_bg_dim)
 
-    img_comp, mask_comp, labels_comp, _ = create_pill_comp(bg_img, **kwargs)
+    # Second, get the pill images and masks to compose on the background
+    pill_images, pill_masks = load_random_pills_and_masks(
+        images_path, masks_path, pill_types=num_pills_type, thresh=25
+    )
+
+    # Third, generate the composed image (i.e. pills on background)
+    img_comp, mask_comp, labels_comp, _ = generate_image(bg_image, pill_images, pill_masks, mode, **kwargs)
     img_comp = cv2.cvtColor(img_comp, cv2.COLOR_RGB2BGR)
 
-    # Save the image and annotations
-    anno_yolo = create_yolo_annotations(mask_comp, labels_comp)
-    n_pills: int = len(anno_yolo)
-    with (output_folder / "labels" / f"{idx}_{n_pills}.txt").open("w") as f:
-        for j in range(len(anno_yolo)):
-            f.write(" ".join(str(el) for el in anno_yolo[j]) + "\n")
-    cv2.imwrite(str(output_folder / "images" / f"{idx}_{n_pills}.jpg"), img_comp)
+    if mode == "detection":
+        # Save YOLO annotations
+        # print("This is the detection dataset generation mode")
+        anno_yolo = create_yolo_annotations(mask_comp, labels_comp)
+        n_pills: int = len(anno_yolo)
+        with (output_folder / mode / _YOLO_LABELS / f"{idx}_{n_pills}.txt").open("w") as f:
+            for j in range(len(anno_yolo)):
+                f.write(" ".join(str(el) for el in anno_yolo[j]) + "\n")
+
+        # save images
+        cv2.imwrite(str(output_folder / mode / "images" / f"{idx}_{n_pills}.jpg"), img_comp)
+    elif mode == "segmentation":
+        n_pills = len(labels_comp)
+
+        # Save instance segmentation masks images and masks
+        cv2.imwrite(str(output_folder / mode / "images" / f"{idx}_{n_pills}.jpg"), img_comp)
+        cv2.imwrite(str(output_folder / mode / _SEGMENTATION_LABELS / f"{idx}_{n_pills}.jpg"), mask_comp)
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
 
 
 @click.command()
@@ -63,7 +97,7 @@ def generate_samples(
 )
 @click.option(
     "-b",
-    "--bg-img-path",
+    "--bg-image-path",
     default=None,
     type=click.Path(exists=True),
     show_default=True,
@@ -75,7 +109,7 @@ def generate_samples(
 @click.option(
     "-o",
     "--output-folder",
-    default=Path("./dataset/synthetic/"),
+    default=Path("./data/synthetic/"),
     type=click.Path(),
     show_default=True,
     help="Path to the output folder",
@@ -86,6 +120,14 @@ def generate_samples(
     default=100,
     show_default=True,
     help="Number of images to generate",
+)
+@click.option(
+    "-m",
+    "--mode",
+    default="detection",
+    type=click.Choice(["detection", "segmentation"]),
+    show_default=True,
+    help="Flag for detection or segmentation dataset generation",
 )
 @click.option(
     "-np",
@@ -137,10 +179,9 @@ def generate_samples(
     help="Maximum dimension of the background image",
 )
 @click.option(
-    "-ab/-no-ab",
-    "--allow-pills-outside/--no-allow-pills-outside",
-    default=True,
-    show_default=True,
+    "-e",
+    "--enable-edge-pills",
+    is_flag=True,
     help="Allow pills to be placed on the edge of the background image",
 )
 @click.option(
@@ -152,9 +193,10 @@ def generate_samples(
 )
 def main(
     pill_mask_path: Union[str, Path],
-    bg_img_path: Optional[Union[str, Path]],
+    bg_image_path: Optional[Union[str, Path]],
     output_folder: Union[str, Path],
     n_images: int,
+    mode: str,
     n_pill_types: int,
     min_pills: int,
     max_pills: int,
@@ -162,59 +204,46 @@ def main(
     max_attempts: int,
     min_bg_dim: int,
     max_bg_dim: int,
-    allow_pills_outside: bool,
+    enable_edge_pills: bool,
     num_cpu: int,
 ):
-    # Convert paths to Path objects
-    pill_mask_path = Path(pill_mask_path)
-    bg_img_path = Path(bg_img_path) if bg_img_path is not None else None
-
     # Load pill mask paths
-    pill_mask_paths = load_pill_mask_paths(pill_mask_path)
-    logger.info(f"Found {len(pill_mask_paths)} pill masks.")
+    images_path, masks_path = load_pill_mask_paths(pill_mask_path)
 
-    # Create output folder
+    # Create output folders
     output_path = Path(output_folder)
-    output_path.mkdir(parents=True, exist_ok=True)
-    (output_path / "images").mkdir(parents=True, exist_ok=True)
-    (output_path / "labels").mkdir(parents=True, exist_ok=True)
-
-    # Load and resize background image if provided
-    bg_img: Optional[np.ndarray] = None
-    bg_img_paths: List[Path] = []
-    if bg_img_path is not None:
-        bg_img_path = Path(bg_img_path)
-        if bg_img_path.is_file():
-            bg_img = load_bg_image(bg_img_path, min_bg_dim, max_bg_dim)
-        else:
-            bg_img_paths = list(bg_img_path.glob("*.jpg"))
+    img_path, label_path = create_folders(output_path, mode)
 
     # Generate images and annotations and save them
     kwargs: Dict[str, Any] = {
-        "pill_mask_paths": pill_mask_paths,
-        "n_pill_types": n_pill_types,
         "min_pills": min_pills,
         "max_pills": max_pills,
         "max_overlap": max_overlap,
         "max_attempts": max_attempts,
-        "allow_pill_on_border": allow_pills_outside,
+        "enable_edge_pills": enable_edge_pills,
     }
     Parallel(n_jobs=num_cpu)(
         delayed(generate_samples)(
-            bg_img,
-            bg_img_path,
-            bg_img_paths,
+            bg_image_path,
+            images_path,
+            masks_path,
             output_path,
             min_bg_dim,
             max_bg_dim,
+            n_pill_types,
             idx,
+            mode,
             **kwargs,
         )
         for idx in trange(n_images, desc="Generating images")
     )
 
-    logger.info("Annotations are saved to the folder: ", output_path / "labels")
-    logger.info("Images are saved to the folder: ", output_path / "images")
+    # Log output folder path
+    if mode == "detection":
+        logger.info("Annotations are saved to the folder: ", label_path)
+    elif mode == "segmentation":
+        logger.info("Instance segmentation masks are saved to the folder: ", label_path)
+    logger.info("Images are saved to the folder: ", img_path)
 
 
 if __name__ == "__main__":

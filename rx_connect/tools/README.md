@@ -24,7 +24,7 @@ print(data_tools.fetch_from_remote(remote_file_name))
 Function returns the local path "`local_cache/test_remote_file.txt`", where the file is cached.
 </br>
 
-Example 2 - files
+Example 2 - folders
 ```
 from rx_connect.tools import data_tools
 
@@ -32,3 +32,10 @@ remote_folder_name = "/home/wtsain4/test_remote_folder"
 print(data_tools.fetch_from_remote(remote_folder_name))
 ```
 Function returns the local path "`local_cache/test_remote_folder`", where the folder and all the files it contains are cached recursively.
+
+</br>
+
+## Safe cast
+Return the type of object and bypass ** linter None-type checking errors **.
+
+` safe_cast(input: Any | None) -> Any`
