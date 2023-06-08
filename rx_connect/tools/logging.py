@@ -53,13 +53,49 @@ class CustomRichHandler(RichHandler):
         return text
 
 
-def setup_logger(log_level: int = logging.INFO) -> logging.Logger:
+class CustomLogger(logging.RootLogger):
+    def __init__(self, level: int = logging.INFO) -> None:
+        super().__init__(level)
+
+    def assertion(self, condition: bool, message: str, stacklevel: int = 2) -> None:
+        """Assert a condition and log the exception if it fails.
+
+        Usage:
+        >>> assert_condition(x == 0, f"expected x to be 0, got {x}")
+        >>> [06/03/23 16:31:58] ERROR [rx_connect/wbaml/utils/exception.py] [assert_condition: 27] expected x to be 0,
+            got 1
+
+        ╭────────────────────────────────────────────────────── Traceback (most recent call last) ─────────────────────╮
+        │ /Users/dvsingxe/ai-lab-RxConnect/rx_connect/pill_validation/test.py:19 in assert_condition                   │
+        │                                                                                                              │
+        │   16                                           ╭──────────────────────── locals ─────────────────────────╮   │
+        │   17 def assert_condition(condition, message): │ condition = False                                       │   │
+        │   18 │   try:                                  │         e = AssertionError('expected x to be 0, got 1') │   │
+        │ ❱ 19 │   │   assert condition, message         │   message = 'expected x to be 0, got 1'                 │   │
+        │   20 │   except AssertionError as e:           ╰─────────────────────────────────────────────────────────╯   │
+        │   21 │   │   logger.exception("oopsie")                                                                      │
+        │   22 │   │   raise                                                                                           │
+        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+        Args:
+            condition (bool): The condition to assert.
+            message (str): The message to log if the condition fails.
+            stacklevel (int): The stacklevel to log the exception at.
+
+        Raises:
+            AssertionError: If the condition fails.
+        """
+        try:
+            assert condition, message
+        except AssertionError as e:
+            self.exception(message, stack_info=True, exc_info=True, stacklevel=stacklevel)
+            raise e
+
+
+def setup_logger(log_level: int = logging.INFO) -> CustomLogger:
     """Setup a colored logger with custom formatting."""
     # Create a logger
-    logger = logging.getLogger()
-
-    # Set the log level
-    logger.setLevel(log_level)
+    logger = CustomLogger(log_level)
 
     if any(isinstance(handler, (logging.StreamHandler, RichHandler)) for handler in logger.handlers):
         # logger already initialized
@@ -76,22 +112,5 @@ def setup_logger(log_level: int = logging.INFO) -> logging.Logger:
 
     # Add the console handler to the logger
     logger.addHandler(handler)
-
-    def assert_method(condition: bool, message: str, stacklevel: int = 2) -> None:
-        """
-        Assert a condition and log the exception if it fails.
-
-        Args:
-            condition (bool): The condition to assert.
-            message (str): The message to log if the condition fails.
-            stacklevel (int): The stacklevel to log the exception at.
-        """
-        try:
-            assert condition, message
-        except AssertionError as e:
-            logger.exception(message, stack_info=True, exc_info=True, stacklevel=stacklevel)
-            raise e
-
-    logger.__dict__.update({"assertion": assert_method})
 
     return logger
