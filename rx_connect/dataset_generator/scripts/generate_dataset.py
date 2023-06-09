@@ -62,7 +62,7 @@ def generate_samples(
     )
 
     # Third, generate the composed image (i.e. pills on background)
-    img_comp, mask_comp, labels_comp, _ = generate_image(bg_image, pill_images, pill_masks, mode, **kwargs)
+    img_comp, mask_comp, labels_comp = generate_image(bg_image, pill_images, pill_masks, mode, **kwargs)
     img_comp = cv2.cvtColor(img_comp, cv2.COLOR_RGB2BGR)
 
     if mode == "detection":
@@ -134,7 +134,7 @@ def generate_samples(
     "--n-pill-types",
     default=1,
     show_default=True,
-    help="Number of different types of pills",
+    help="Number of different types of pills on each image",
 )
 @click.option(
     "-mp",
@@ -160,21 +160,21 @@ def generate_samples(
 @click.option(
     "-ma",
     "--max-attempts",
-    default=10,
+    default=5,
     show_default=True,
     help="Maximum number of attempts to place a pill",
 )
 @click.option(
     "-mb",
     "--min-bg-dim",
-    default=1080,
+    default=2160,
     show_default=True,
     help="Minimum dimension of the background image",
 )
 @click.option(
     "-MB",
     "--max-bg-dim",
-    default=1920,
+    default=3840,
     show_default=True,
     help="Maximum dimension of the background image",
 )
@@ -189,7 +189,7 @@ def generate_samples(
     "--num-cpu",
     default=cpu_count() // 2,
     show_default=True,
-    help="The number of CPU cores to use",
+    help="The number of CPU cores to use. Use 1 for debugging.",
 )
 def main(
     pill_mask_path: Union[str, Path],
@@ -240,10 +240,10 @@ def main(
 
     # Log output folder path
     if mode == "detection":
-        logger.info("Annotations are saved to the folder: ", label_path)
+        logger.info(f"Annotations are saved to the folder: {label_path}")
     elif mode == "segmentation":
-        logger.info("Instance segmentation masks are saved to the folder: ", label_path)
-    logger.info("Images are saved to the folder: ", img_path)
+        logger.info(f"Instance segmentation masks are saved to the folder: {label_path}")
+    logger.info(f"Images are saved to the folder: {img_path}")
 
 
 if __name__ == "__main__":

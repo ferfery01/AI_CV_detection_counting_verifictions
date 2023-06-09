@@ -71,9 +71,9 @@ def predict_masks(images: Union[np.ndarray, List[np.ndarray]]) -> List[torch.Ten
     return masks
 
 
-def get_best_mask_per_images(masks: List[torch.Tensor]) -> List[torch.Tensor]:
+def get_best_mask_per_images(masks: List[torch.Tensor]) -> List[np.ndarray]:
     """Get the mask with the maximum number of True values"""
-    max_masks: List[torch.Tensor] = []
+    max_masks: List[np.ndarray] = []
     for mask in masks:
         # sum along second and third dimensions
         sums = torch.sum(mask[0], dim=(1, 2))

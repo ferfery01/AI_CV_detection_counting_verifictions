@@ -6,6 +6,7 @@ lightning==2.0.2
 matplotlib==3.7.1
 numpy==1.23.0
 opencv-contrib-python==4.7.0.72
+scikit-image==0.21.0
 scikit-learn==1.2.2
 rich==13.4.1
 super_gradients @ git+https://github.com/Deci-AI/super-gradients.git

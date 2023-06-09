@@ -1,44 +1,30 @@
 import random
-from typing import List, Sequence, Tuple
+from typing import List, NamedTuple, Sequence
 
 import numpy as np
 
-from rx_connect.dataset_generator.object_overlay import add_pill_on_bg, verify_overlap
+from rx_connect.dataset_generator.object_overlay import (
+    check_overlap,
+    is_pill_within_background,
+    overlay_image_onto_background,
+)
 from rx_connect.dataset_generator.transform import resize_and_transform_pill
 
-__all__: Sequence[str] = ("is_pill_within_image", "random_partition", "generate_image")
+__all__: Sequence[str] = ("random_partition", "generate_image", "ImageComposition")
 
 
-def is_pill_within_image(image: np.ndarray, mask: np.ndarray, position: Tuple[int, int]) -> bool:
+class ImageComposition(NamedTuple):
+    """The image, mask, and label IDs of the composed image."""
+
+    image: np.ndarray
+    """Image containing the composed pills.
     """
-    Verifies whether an object along with its mask can fit inside a rectangular image.
-
-    Args:
-        image (numpy.ndarray): The rectangular image to be checked.
-        mask (numpy.ndarray): The binary mask of the object.
-        position (tuple): The (x,y) position of the object within the image.
-
-    Returns:
-        bool: True if the object along with its mask can fit inside the image, False otherwise.
+    mask: np.ndarray
+    """Mask containing the composed pills.
     """
-    # Get the minimum and maximum x and y coordinates of the mask
-    y_min, y_max = np.min(np.where(mask > 0)[0]), np.max(np.where(mask > 0)[0])
-    x_min, x_max = np.min(np.where(mask > 0)[1]), np.max(np.where(mask > 0)[1])
-    obj_width, obj_height = x_max - x_min, y_max - y_min
-
-    # Determine the dimensions of the mask and the rectangular image
-    image_height, image_width = image.shape[:2]
-
-    # Determine the bounding box of the object
-    x, y = position
-    xmin, ymin = x, y
-    xmax, ymax = x + obj_width, y + obj_height
-
-    # Check if the bounding box of the object is fully contained within the rectangular image
-    if (xmin > 0 and ymin > 0) and (xmax < image_width and ymax < image_height):
-        return True
-    else:
-        return False
+    labels: List[int]
+    """List of label IDs of the composed pills.
+    """
 
 
 def random_partition(number: int, num_parts: int) -> List[int]:
@@ -70,9 +56,10 @@ def _compose_pill_on_bg(
     n_pills: int,
     max_overlap: float = 0.2,
     max_attempts: int = 10,
-    enable_edge_pills: bool = True,
+    start_index: int = 1,
+    enable_edge_pills: bool = False,
     **kwargs,
-) -> Tuple[np.ndarray, np.ndarray, List[int], List[int]]:
+) -> ImageComposition:
     """Compose n_pills pills on a background image.
 
     Args:
@@ -85,60 +72,56 @@ def _compose_pill_on_bg(
         max_overlap: The maximum allowed overlap between pills.
         max_attempts: The maximum number of attempts to compose a pill.
         enable_edge_pills: Whether to allow pills to be placed on the border of the background image.
+        start_index: The starting index for the pill labels.
         **kwargs: Keyword arguments to be passed to resize_and_transform_pill.
 
     Returns:
-        A tuple containing the composed background image, the composition mask, the pill labels,
-        and the pill areas.
+        The composed image, mask, and label IDs.
     """
-    h_bg, w_bg = bg_image.shape[0], bg_image.shape[1]
+    h_bg, w_bg = bg_image.shape[:2]
+    h_pill, w_pill = pill_image.shape[:2]
 
-    pill_areas: List[int] = []
-    pill_labels: List[int] = []
+    label_ids: List[int] = []
     count: int = 1
 
-    for idx in range(n_pills):
-        success: bool = False
-
+    for _ in range(n_pills):
         # Resize and transform the pill image and mask.
-        pill_img_t, mask_t = resize_and_transform_pill(pill_image, pill_mask, **kwargs)
+        pill_img_t, pill_mask_t = resize_and_transform_pill(pill_image, pill_mask, **kwargs)
 
+        # Attempt to compose the pill on the background image.
         for _ in range(max_attempts):
             # Randomly sample a position for the pill.
             # The position is sampled from a normal distribution with mean at the center of the background image
             # and standard deviation of a quarter of the background image's width and height.
-            x, y = np.random.normal(loc=(w_bg / 2, h_bg / 2), scale=(w_bg / 4, h_bg / 4), size=(2,))
-            x, y = np.clip(x, 0, w_bg), np.clip(y, 0, h_bg)
+            x, y = np.random.normal(loc=(w_bg / 2, h_bg / 2), scale=(w_bg / 4, h_bg / 4), size=(2,)).astype(
+                int
+            )
+            top_left = np.clip(x, -w_pill, w_bg), np.clip(y, -h_pill, h_bg)
 
             # Check if the pill can fit inside the background image.
-            if not enable_edge_pills and not is_pill_within_image(bg_image, mask_t, (x, y)):
+            if not is_pill_within_background(bg_image, pill_mask_t, top_left, enable_edge_pills):
+                continue
+
+            # Verify that the new pill does not overlap with the existing pills.
+            if not check_overlap(pill_mask_t, comp_mask, top_left, max_overlap):
                 continue
 
             # Add the pill to the background image.
-            bg_img_prev, comp_mask_prev = bg_image.copy(), comp_mask.copy()
-            bg_image, comp_mask, added_mask = add_pill_on_bg(
-                bg_image, comp_mask, pill_img_t, mask_t, int(x), int(y), count
+            bg_image, comp_mask = overlay_image_onto_background(
+                bg_image, comp_mask, pill_img_t, pill_mask_t, top_left, start_index + count
             )
 
-            # Verify that the pill does not overlap with other pills too much.
-            if added_mask is not None and verify_overlap(comp_mask, pill_areas, max_overlap):
-                pill_areas.append(np.count_nonzero(added_mask))
-                if mode == "detection":  # all pills labeled as 1
-                    pill_labels.append(1)
-                elif mode == "segmentation":  # each pill label as it's own indexß
-                    pill_labels.append(idx)
-                else:
-                    raise ValueError(f"Invalid mode {mode}. Must be either 'detection' or 'segmentation'.")
-                success = True
-                count += 1
-                break
+            # Update the label ids depending on the composition mode.
+            if mode == "detection":  # all pills labeled as 1
+                label_ids.append(1)
+            elif mode == "segmentation":  # each pill label as it's own index
+                label_ids.append(start_index + count)
             else:
-                bg_image, comp_mask = bg_img_prev.copy(), comp_mask_prev.copy()
-
-        if not success:
+                raise ValueError(f"Invalid mode {mode}. Must be either 'detection' or 'segmentation'.")
+            count += 1
             break
 
-    return bg_image, comp_mask, pill_labels, pill_areas
+    return ImageComposition(bg_image, comp_mask, label_ids)
 
 
 def generate_image(
@@ -152,7 +135,7 @@ def generate_image(
     max_attempts: int = 10,
     enable_edge_pills: bool = False,
     **kwargs,
-) -> Tuple[np.ndarray, np.ndarray, List[int], List[int]]:
+) -> ImageComposition:
     """Create a composition of pills on a background image.
 
     Args:
@@ -173,7 +156,6 @@ def generate_image(
         composition_mask: The mask of the composition.
             - If it is detection mode, all pills will be labeled as 1;
             - It it is segmentation mode, pills will be labeled as it's index, from 1, 2, 3..., n_pills.
-        pill_areas: List of areas of the pills.
         pill_labels: List of labels of the pills.
     """
 
@@ -186,13 +168,11 @@ def generate_image(
     # Randomly sample the number of pills per type.
     pills_per_type = random_partition(num_pills, len(pill_images))
 
-    pill_labels: List[int] = []
-    pill_areas: List[int] = []
-    count: int = 1
+    label_ids: List[int] = []
 
     for idx, n_pills in enumerate(pills_per_type):
         # Compose the pill on the background image.
-        bg_image, comp_mask, labels, areas = _compose_pill_on_bg(
+        bg_image, comp_mask, labels = _compose_pill_on_bg(
             bg_image,
             comp_mask,
             pill_images[idx],
@@ -202,10 +182,9 @@ def generate_image(
             max_overlap=max_overlap,
             max_attempts=max_attempts,
             enable_edge_pills=enable_edge_pills,
+            start_index=len(label_ids),
             **kwargs,
         )
-        count += len(labels)
-        pill_labels += labels
-        pill_areas += areas
+        label_ids += labels
 
-    return bg_image, comp_mask, pill_labels, pill_areas
+    return ImageComposition(bg_image, comp_mask, label_ids)

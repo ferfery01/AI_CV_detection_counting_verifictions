@@ -19,8 +19,8 @@ def create_yolo_annotations(mask_comp: np.ndarray, labels_comp: List[int]) -> Li
     masks = mask_comp == obj_ids[:, None, None]
 
     annotations_yolo: List[List[float]] = []
-    for i in range(len(labels_comp)):
-        pos = np.where(masks[i])
+    for idx, mask in enumerate(masks):
+        pos = np.where(mask)
         xmin, xmax = np.min(pos[1]), np.max(pos[1])
         ymin, ymax = np.min(pos[0]), np.max(pos[0])
 
@@ -29,7 +29,7 @@ def create_yolo_annotations(mask_comp: np.ndarray, labels_comp: List[int]) -> Li
 
         annotations_yolo.append(
             [
-                labels_comp[i] - 1,
+                labels_comp[idx] - 1,
                 round(float(xc / comp_w), 5),
                 round(float(yc / comp_h), 5),
                 round(float(w / comp_w), 5),

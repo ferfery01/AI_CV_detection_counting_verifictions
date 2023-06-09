@@ -1,7 +1,9 @@
-from typing import Tuple
+from pathlib import Path
+from typing import Tuple, Union
 
 import cv2
 import numpy as np
+from skimage.io import imread
 
 # the output mask has for possible output values, marking each pixel
 # in the mask as (1) definite background, (2) definite foreground,
@@ -12,6 +14,37 @@ GRABCUT_TYPES: Tuple[Tuple[str, int], ...] = (
     ("Definite Foreground", cv2.GC_FGD),
     ("Probable Foreground", cv2.GC_PR_FGD),
 )
+
+
+def create_initial_mask_for_grabcut(image_path: Union[str, Path], threshold: float = 0.1) -> np.ndarray:
+    """Creates an initial mask for the GrabCut algorithm.
+
+    This function generates an initial binary mask for the GrabCut algorithm. Pixels in the
+    grayscale image below the specified threshold are set as the background (0), while those
+    above the threshold are set as the probable foreground (255).
+
+    Args:
+        image_path (Union[str, Path]): The path to the source image.
+        threshold (float, optional): Intensity threshold for creating the initial binary mask.
+            Pixels with a grayscale value below the threshold will be set as the background (0) and
+            those above as the probable foreground (255). Defaults to 0.1.
+
+    Returns:
+        np.ndarray: The initialized binary mask for the GrabCut algorithm.
+    """
+    # Read the image in grayscale
+    grayscale_image = imread(image_path, as_gray=True)
+
+    # Initialize a new mask of the same size as the grayscale image with all zeros
+    initial_mask = np.zeros_like(grayscale_image, dtype=np.uint8)
+
+    # Set pixels with intensity less than the threshold as the background (0)
+    initial_mask[grayscale_image < threshold] = 0
+
+    # Set pixels with intensity greater than the threshold as probable foreground (255)
+    initial_mask[grayscale_image > threshold] = 255
+
+    return initial_mask
 
 
 def apply_grabcut(image: np.ndarray, mask: np.ndarray, n_iter: int = 10) -> np.ndarray:
@@ -39,7 +72,7 @@ def post_process_mask(mask: np.ndarray) -> np.ndarray:
     """Remove the background from the mask."""
     # set all definite background and probable background pixels to 0
     # while definite foreground and probable foreground pixels are set
-    # to 1, then scale teh mask from the range [0, 1] to [0, 255]
+    # to 1, then scale the mask from the range [0, 1] to [0, 255]
     outputMask = np.where((mask == cv2.GC_BGD) | (mask == cv2.GC_PR_BGD), 0, 1)
     outputMask = (outputMask * 255).astype("uint8")
 

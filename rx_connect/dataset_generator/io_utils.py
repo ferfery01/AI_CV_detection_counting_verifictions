@@ -1,12 +1,12 @@
 import random
 from pathlib import Path
-from typing import Any, List, NamedTuple, Optional, Sequence, Tuple, Union
+from typing import Any, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
 from skimage import io
 
 from rx_connect.dataset_generator.transform import resize_bg
-from rx_connect.wbaml.utils.logging import setup_logger
+from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
 
@@ -23,6 +23,42 @@ class PillMask(NamedTuple):
 
     img: np.ndarray
     mask: np.ndarray
+
+
+def get_unmasked_image_paths(image_folder: Union[str, Path], output_folder: Union[str, Path]) -> List[Path]:
+    """Get the paths of the images in the source folder that have not been masked yet.
+
+    This function compares the source image folder and the output folder, and identifies
+    images in the source folder that do not have corresponding masks in the output folder.
+
+    Args:
+        image_folder (Union[str, Path]): The path to the source image folder.
+        output_folder (Union[str, Path]): The path to the folder where masked images are saved.
+
+    Returns:
+        List[Path]: List of Paths of the images in the source folder that have not been masked yet.
+    """
+    # Convert to pathlib.Path objects for easy and consistent path manipulations
+    image_folder, output_folder = Path(image_folder), Path(output_folder)
+
+    # Create the output folder if it does not exist
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    # Gather the names of all images in the source folder
+    source_images: Set[str] = {img_path.name for img_path in image_folder.glob("*.jpg")}
+
+    # Gather the names of all images in the output folder (assumed to be masked images)
+    masked_images: Set[str] = {mask_path.name for mask_path in output_folder.glob("*.jpg")}
+
+    # Identify images that have not been masked yet by finding the difference
+    unmasked_images: Set[str] = source_images.difference(masked_images)
+
+    # Convert the names of unmasked images to full path for further processing
+    unmasked_image_paths: List[Path] = [image_folder / img_name for img_name in unmasked_images]
+
+    logger.info(f"Found {len(unmasked_image_paths)} images to mask.")
+
+    return unmasked_image_paths
 
 
 def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
