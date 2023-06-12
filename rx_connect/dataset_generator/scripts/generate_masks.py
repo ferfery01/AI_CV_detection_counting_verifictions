@@ -111,7 +111,7 @@ def generate_final_mask(
     "--num-iter",
     default=10,
     show_default=True,
-    help="The number of iterations to run grabcut",
+    help="The number of iterations to run grabcut algorithm. Only used if --use-sam is not set.",
 )
 @click.option(
     "-c",

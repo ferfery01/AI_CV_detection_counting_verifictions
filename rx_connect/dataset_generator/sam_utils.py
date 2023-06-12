@@ -1,11 +1,20 @@
 from typing import Any, Dict, List
 
 import numpy as np
+import torch
 from huggingface_hub import hf_hub_download
 from segment_anything import SamAutomaticMaskGenerator, build_sam
 
+from rx_connect.tools.logging import setup_logger
+
+logger = setup_logger()
+
+# Download the SAM-HQ model from HuggingFace Hub and load it into memory
 _ckpt_path = hf_hub_download("ybelkada/segment-anything", "checkpoints/sam_vit_h_4b8939.pth")
-MASK_GENERATOR = SamAutomaticMaskGenerator(model=build_sam(checkpoint=_ckpt_path), min_mask_region_area=5000)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+logger.info(f"Using {device} for SAM-HQ model inference.")
+model = build_sam(checkpoint=_ckpt_path).to(device)
+MASK_GENERATOR = SamAutomaticMaskGenerator(model, min_mask_region_area=5000)
 
 
 def get_best_mask(masks: List[Dict[str, Any]]) -> np.ndarray:
