@@ -1,6 +1,7 @@
 from typing import Any, Dict, List
 
 import numpy as np
+<<<<<<< HEAD
 import torch
 from huggingface_hub import hf_hub_download
 from segment_anything import SamAutomaticMaskGenerator, build_sam
@@ -15,6 +16,13 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 logger.info(f"Using {device} for SAM-HQ model inference.")
 model = build_sam(checkpoint=_ckpt_path).to(device)
 MASK_GENERATOR = SamAutomaticMaskGenerator(model, min_mask_region_area=5000)
+=======
+from huggingface_hub import hf_hub_download
+from segment_anything import SamAutomaticMaskGenerator, build_sam
+
+_ckpt_path = hf_hub_download("ybelkada/segment-anything", "checkpoints/sam_vit_h_4b8939.pth")
+MASK_GENERATOR = SamAutomaticMaskGenerator(model=build_sam(checkpoint=_ckpt_path), min_mask_region_area=5000)
+>>>>>>> 143bbcc (Merged PR 202275: Replace SAM with SAM-HQ and extend the `generate_masks` to work with batch of images)
 
 
 def get_best_mask(masks: List[Dict[str, Any]]) -> np.ndarray:

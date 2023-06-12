@@ -25,5 +25,8 @@ super_gradients @ git+https://github.com/Deci-AI/super-gradients.git
 torch==2.0.1
 torchshow==0.5.0
 torchvision==0.15.2
+<<<<<<< HEAD
 transformers==4.29.0
 PyYAML==1.1
+transformers==4.30.1
+
