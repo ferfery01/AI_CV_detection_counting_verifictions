@@ -37,6 +37,8 @@ MANIFEST
 data/
 ePill**/
 dataset/**
+**/synthetic/**
+**/labels/**
 
 # Checkpoints
 **/checkpoints/**

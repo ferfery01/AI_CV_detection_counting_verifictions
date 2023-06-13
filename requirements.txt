@@ -14,18 +14,11 @@ lightning==2.0.3
 matplotlib==3.7.1
 numpy==1.23.0
 opencv-contrib-python==4.7.0.72
+PyYAML==1.1
+rich==13.4.1
 scikit-image==0.21.0
 scikit-learn==1.2.2
-rich==13.4.1
 segment-anything @ git+https://github.com/facebookresearch/segment-anything.git
 super_gradients==3.1.2
 torchshow==0.5.0
 transformers==4.30.1
-super_gradients @ git+https://github.com/Deci-AI/super-gradients.git
-torch==2.0.1
-torchshow==0.5.0
-<<<<<<< HEAD
-transformers==4.29.0
-PyYAML==1.1
-transformers==4.30.1
-
