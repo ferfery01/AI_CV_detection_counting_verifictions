@@ -173,7 +173,10 @@ class RxImageCount(RxImageBase):
         Returns:
             List[np.ndarray]: List of cropped image views.
         """
-        return [self.image[x : (x + w), y : (y + h)] for (x, y, w, h), _ in self.get_bounding_boxes()]
+        return [
+            self.image[int(y1) : int(y2), int(x1) : int(x2)]
+            for (x1, y1, x2, y2), _ in self.get_bounding_boxes()
+        ]
 
 
 class RxImageCountSegment(RxImageCount):
