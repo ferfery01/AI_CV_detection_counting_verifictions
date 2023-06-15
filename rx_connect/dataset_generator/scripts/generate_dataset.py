@@ -12,7 +12,8 @@ from rx_connect.dataset_generator.composition import generate_image
 from rx_connect.dataset_generator.io_utils import (
     get_background_image,
     load_pill_mask_paths,
-    load_random_pills_and_masks,
+    load_pills_and_masks,
+    random_sample_pills,
 )
 from rx_connect.tools.logging import setup_logger
 
@@ -57,9 +58,8 @@ def generate_samples(
     bg_image = get_background_image(bg_img_path, min_bg_dim, max_bg_dim)
 
     # Second, get the pill images and masks to compose on the background
-    pill_images, pill_masks = load_random_pills_and_masks(
-        images_path, masks_path, pill_types=num_pills_type, thresh=25
-    )
+    sampled_images_path, sampled_masks_path = random_sample_pills(images_path, masks_path, num_pills_type)
+    pill_images, pill_masks = load_pills_and_masks(sampled_images_path, sampled_masks_path, thresh=25)
 
     # Third, generate the composed image (i.e. pills on background)
     img_comp, mask_comp, labels_comp = generate_image(bg_image, pill_images, pill_masks, mode, **kwargs)
@@ -67,19 +67,22 @@ def generate_samples(
 
     if mode == "detection":
         # Save YOLO annotations
-        # print("This is the detection dataset generation mode")
         anno_yolo = create_yolo_annotations(mask_comp, labels_comp)
         n_pills: int = len(anno_yolo)
         with (output_folder / mode / _YOLO_LABELS / f"{idx}_{n_pills}.txt").open("w") as f:
             for j in range(len(anno_yolo)):
                 f.write(" ".join(str(el) for el in anno_yolo[j]) + "\n")
 
-        # save images
-        cv2.imwrite(str(output_folder / mode / "images" / f"{idx}_{n_pills}.jpg"), img_comp)
+        # Save composed image
+        cv2.imwrite(f"{output_folder}/{mode}/images/{idx}_{n_pills}.jpg", img_comp)
+
+        # Save mapping between composed image and sampled pill paths
+        with (output_folder / mode / "pill_info.csv").open("a") as f:
+            f.write(f"{idx}_{n_pills}.jpg: {', '.join(str(path) for path in sampled_images_path)}\n")
     elif mode == "segmentation":
         n_pills = len(labels_comp)
 
-        # Save instance segmentation masks images and masks
+        # Save instance segmentation masks along with the composed image
         cv2.imwrite(str(output_folder / mode / "images" / f"{idx}_{n_pills}.jpg"), img_comp)
         cv2.imwrite(str(output_folder / mode / _SEGMENTATION_LABELS / f"{idx}_{n_pills}.jpg"), mask_comp)
     else:
@@ -90,10 +93,9 @@ def generate_samples(
 @click.option(
     "-p",
     "--pill-mask-path",
-    default=Path("./data/pills/"),
-    type=click.Path(exists=True),
+    default="RxConnectShared/ePillID/pills/",
     show_default=True,
-    help="Path to the folder with pill masks",
+    help="Path to the folder with pill masks. It can be a local directory or a remote path.",
 )
 @click.option(
     "-b",

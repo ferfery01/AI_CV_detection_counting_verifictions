@@ -1,13 +1,24 @@
 import subprocess
 from pathlib import Path
-from typing import Union
+from typing import List, Union
+
+from rx_connect.tools.logging import setup_logger
+
+logger = setup_logger()
+
+"""NOTE: For the functions in this file to work, you need to be one a VPN and have
+password-less SSH set up. Steps:
+    1. $ ssh-keygen (you can hit <enter> to the end)
+    2. $ ssh-copy-id <user_name>@10.231.51.79
+"""
 
 
 def fetch_from_remote(
-    remote_path: str,
+    remote_path: Union[str, Path],
     server_ip: str = "10.231.51.79",
-    local_cache_folder: str = "local_cache",
+    local_cache_folder: Union[str, Path] = "local_cache",
     ignore_exist: bool = False,
+    timeout: int = 30,
 ) -> str:
     """
     Fetch data from remote server if not yet cached.
@@ -17,24 +28,72 @@ def fetch_from_remote(
             (you can hit <enter> to the end)
         2. $ ssh-copy-id <user_name>@10.231.51.79
 
-
     Args:
-        remote_path (str): Full path or relative path (to home) of the remote file/folder.
+        remote_path (str, Path): Full path or relative path (to home) of the remote file/folder.
         server_ip (str): The remote server IP address. Default to the AI Lab GPU server at 10.231.51.79.
-        local_cache_folder (str): The desired name of the caching folder.
+        local_cache_folder (str, Path): The desired name of the caching folder.
         ignore_exist (bool): Enforce rsync checking time stamp if file/folder already exists.
+        timeout (int): Timeout in seconds for the rsync command.
 
     Returns:
         str: Local file name after caching.
     """
-    Path(local_cache_folder).mkdir(exist_ok=True)
+    remote_path = Path(remote_path)
+    local_cache_folder = Path(local_cache_folder)
+    local_cache_folder.mkdir(exist_ok=True, parents=True)
 
-    local_path = Path(local_cache_folder + "/" + Path(remote_path).name)
+    local_path = local_cache_folder / remote_path.name
     if not local_path.exists() or ignore_exist:
-        subprocess.run(["rsync", "-ruq", f"{server_ip}:{remote_path}", local_path])
+        try:
+            subprocess.run(["rsync", "-ruq", f"{server_ip}:{remote_path}", local_path], timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Timeout expired when fetching {remote_path} from {server_ip}. Are you on VPN?")
+            raise e
     assert local_path.exists(), f"Error: Failed to cache {remote_path} from {server_ip}."
 
     return str(local_path)
+
+
+def fetch_file_paths_from_remote_folder(
+    remote_dir: Union[str, Path], server_ip: str = "10.231.51.79", timeout: int = 30
+) -> List[Path]:
+    """Fetch the list of files path in a remote directory.
+
+    Args:
+        remote_dir (str, Path): Full path or relative path (to home) of the remote directory.
+        server_ip (str): The remote server IP address. Default to the AI Lab GPU server at
+        timeout (int): Timeout in seconds for the ssh command.
+
+    Returns:
+        List[Path]: List of file paths in the remote directory.
+    """
+    remote_dir = Path(remote_dir)
+
+    # Get the names of all of the files in the remote directory. It ignores any subdirectories.
+    try:
+        result = subprocess.run(
+            ["ssh", server_ip, f"ls -p {remote_dir} | grep -v /"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        logger.error(
+            f"Operation timed out when fetching file paths from {remote_dir} from {server_ip}. Are you on VPN?"
+        )
+        raise e
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to get the list of files in {remote_dir} from {server_ip}.\n"
+            f"Error message: '{result.stderr.strip()}'"
+        )
+
+    # Get the list of all files in the remote directory
+    remote_files = result.stdout.strip().split("\n")
+    logger.info(f"Found {len(remote_files)} files in {remote_dir} from {server_ip}.")
+
+    return [remote_dir / file_name for file_name in remote_files]
 
 
 def push_to_remote(
@@ -49,7 +108,6 @@ def push_to_remote(
         1. $ ssh-keygen
             (you can hit <enter> to the end)
         2. $ ssh-copy-id <user_name>@10.231.51.79
-
 
     Args:
         local_path (str or Path): Full path or relative path (to current) of the local file/folder.

@@ -6,9 +6,15 @@ import numpy as np
 from skimage import io
 
 from rx_connect.dataset_generator.transform import resize_bg
+from rx_connect.tools.data_tools import (
+    fetch_file_paths_from_remote_folder,
+    fetch_from_remote,
+)
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
+
+_SHARED_DIR = "RxConnectShared"
 
 
 class PillMaskPaths(NamedTuple):
@@ -66,13 +72,23 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
 
     Args:
         data_dir: The directory containing all the pill images and the corresponding
-            masks.
+            masks. The directory should have two subdirectories: "images" and "masks".
+            It can be a local directory or a remote directory on AI Lab GPU servers.
 
     Returns:
         pill_mask_paths: The paths to the pill image and mask.
     """
-    imgs_path = tuple((Path(data_dir) / "images").glob("*.jpg"))
-    masks_path = tuple((Path(data_dir) / "masks").glob("*.jpg"))
+    data_dir = Path(data_dir)
+
+    if str(data_dir).startswith(_SHARED_DIR):
+        imgs_path = fetch_file_paths_from_remote_folder(data_dir / "images")
+        masks_path = fetch_file_paths_from_remote_folder(data_dir / "masks")
+    else:
+        imgs_path = list((data_dir / "images").glob("*.jpg"))
+        masks_path = list((data_dir / "masks").glob("*.jpg"))
+
+    # Sort the file paths to ensure that the images and masks are aligned
+    imgs_path, masks_path = sorted(imgs_path), sorted(masks_path)
 
     if len(imgs_path) == 0:
         raise FileNotFoundError(f"Could not find any pill images in {data_dir}/images.")
@@ -85,33 +101,100 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
     return PillMaskPaths(imgs_path, masks_path)
 
 
-def load_image_and_mask(image_path: Path, mask_path: Path, thresh: int = 25) -> PillMask:
+def load_image_and_mask(
+    image_path: Union[str, Path], mask_path: Union[str, Path], thresh: int = 25
+) -> PillMask:
     """Get the image and mask from the pill mask paths.
 
     Args:
-        image: The path to the pill image.
-        mask: The path to the pill mask.
+        image: The path to the pill image. Can be a local path or a remote path.
+        mask: The path to the pill mask. Can be a local path or a remote path.
         thresh: The threshold at which to binarize the mask.
 
     Returns:
         img: The pill image.
         mask: The pill mask.
     """
+    # Fetch the image and mask from remote server if necessary
+    if str(image_path).startswith(_SHARED_DIR):
+        image_path = fetch_from_remote(image_path, local_cache_folder=".cache/images")
+        mask_path = fetch_from_remote(mask_path, local_cache_folder=".cache/masks")
+
     # Load the pill image
     image = io.imread(image_path)
 
     # Load the pill mask
-    try:
-        mask = io.imread(mask_path, as_gray=True)
-        # Binarize the mask
-        mask[mask <= thresh] = 0
-        mask[mask > thresh] = 1
-    except Exception as e:
-        raise FileNotFoundError(
-            f"Could not find mask for image {image_path.name}. Did you run `python -m mask_generator`?"
-        ) from e
+    logger.assertion(
+        Path(mask_path).exists(),
+        f"Could not find mask for image {Path(image_path).name}. Did you run `mask_generator`?",
+    )
+    mask = io.imread(mask_path, as_gray=True)
+
+    # Binarize the mask
+    mask[mask <= thresh] = 0
+    mask[mask > thresh] = 1
 
     return PillMask(img=image, mask=mask)
+
+
+def random_sample_pills(
+    images_path: Sequence[Path], masks_path: Sequence[Path], pill_types: int = 1
+) -> PillMaskPaths:
+    """Randomly sample `pill_types` pills from the given images and masks.
+
+    Args:
+        images_path: The paths to the pill images. Can be local paths or remote paths.
+        masks_path: The paths to the pill masks. Can be local paths or remote paths.
+        pill_types: The number of pill types to sample.
+
+    Returns:
+        pill_mask_paths: The paths to the pill images and masks.
+    """
+    logger.assertion(pill_types > 0, f"`pill_types` should be a positive integer, but provided {pill_types}.")
+    logger.assertion(
+        len(images_path) == len(masks_path), "`images_path` and `masks_path` have different lengths."
+    )
+
+    sampled_img_paths: List[Path] = []
+    sampled_mask_paths: List[Path] = []
+
+    # Randomly sample `pill_types` pills
+    for _ in range(pill_types):
+        idx = np.random.randint(len(images_path))
+        sampled_img_paths.append(images_path[idx])
+        sampled_mask_paths.append(masks_path[idx])
+
+    return PillMaskPaths(sampled_img_paths, sampled_mask_paths)
+
+
+def load_pills_and_masks(
+    images_path: Sequence[Path], masks_path: Sequence[Path], *, thresh: int = 25
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    """Load all the pill images and the corresponding masks provided in the paths.
+
+    Args:
+        images_path: The paths to the pill images. Can be local paths or remote paths.
+        masks_path: The paths to the pill masks. Can be local paths or remote paths.
+        thresh: The threshold at which to binarize the mask.
+
+    Returns:
+        pill_images: The pill images.
+        pill_masks: The pill masks.
+    """
+    logger.assertion(len(images_path) > 0, "`images_path` is empty")
+    logger.assertion(
+        len(images_path) == len(masks_path), "`images_path` and `masks_path` have different lengths."
+    )
+
+    pill_images: List[np.ndarray] = []
+    pill_masks: List[np.ndarray] = []
+
+    for img_path, mask_path in zip(images_path, masks_path):
+        pill_img, pill_mask = load_image_and_mask(img_path, mask_path, thresh=thresh)
+        pill_images.append(pill_img)
+        pill_masks.append(pill_mask)
+
+    return pill_images, pill_masks
 
 
 def load_random_pills_and_masks(

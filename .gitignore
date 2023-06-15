@@ -33,15 +33,20 @@ MANIFEST
 *.swp
 .vim/
 
+# Cache
+**/local_cache/**
+**/.cache/**
+
+# Checkpoints
+**/checkpoints/**
+*.pth*
+
 # Dataset
 data/
 ePill**/
 dataset/**
 **/synthetic/**
 **/labels/**
-
-# Checkpoints
-**/checkpoints/**
 
 # Images
 *.jpg
@@ -50,3 +55,6 @@ dataset/**
 
 # local_example
 examples/
+
+# Test scripts
+*test*.ipynb

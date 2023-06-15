@@ -23,13 +23,14 @@ class RxImageGenerator:
     │     ├── 0001.jpg
     │     ├── ...
     ├── masks
-            ├── 0001.jpg
-            ├── ...
+          ├── 0001.jpg
+          ├── ...
 
     """
 
-    images_dir: Union[str, Path]
-    """Directory containing the pill images and masks
+    images_dir: Union[str, Path] = "RxConnectShared/ePillID/pills/"
+    """Directory containing the pill images and masks. It can either be a local directory
+    or remote directory.
     """
     bg_dir: Optional[Union[str, Path]] = None
     """Directory containing the background images. If None, the background images
@@ -61,26 +62,29 @@ class RxImageGenerator:
     noise_var: Tuple[int, int] = (0, 100)
     """Controls the variance of the gaussian noise applied to the image.
     """
-    _bg_dir: Path = field(init=False)
+    _bg_dir: Path = field(init=False, repr=False)
     """Placeholder for the background directory
     """
-    _image_dir: Path = field(init=False)
+    _image_dir: Path = field(init=False, repr=False)
     """Placeholder for the pill images and masks directory
     """
-    _pill_mask_paths: PillMaskPaths = field(init=False)
+    _sampled_pills_path: List[Path] = field(init=False, repr=False)
+    """Placeholder for the sampled pill images paths
+    """
+    _pill_mask_paths: PillMaskPaths = field(init=False, repr=False)
     """Placeholder for the pill images and masks paths
     """
-    _bg_image: np.ndarray = field(init=False)
+    _bg_image: np.ndarray = field(init=False, repr=False)
     """Placeholder for the background image
     """
-    _pill_images: List[np.ndarray] = field(init=False)
+    _pill_images: List[np.ndarray] = field(init=False, repr=False)
     """Placeholder for the pill images
     """
-    _pill_masks: List[np.ndarray] = field(init=False)
+    _pill_masks: List[np.ndarray] = field(init=False, repr=False)
     """Placeholder for the pill masks
     """
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Init some class attributes
         self.transform_fn = A.transforms.GaussNoise(
             var_limit=self.noise_var, always_apply=True, per_channel=True
@@ -94,6 +98,11 @@ class RxImageGenerator:
 
         # Load the pill images and masks
         self.config_pills()
+
+    @property
+    def reference_pills(self) -> List[np.ndarray]:
+        """Return the reference pill images."""
+        return self._pill_images
 
     def config_background(
         self,
@@ -120,11 +129,7 @@ class RxImageGenerator:
             thresh=self.thresh,
         )
 
-    def generate(
-        self,
-        new_bg: bool = False,
-        new_pill: bool = False,
-    ) -> np.ndarray:
+    def generate(self, new_bg: bool = False, new_pill: bool = False) -> np.ndarray:
         """Generate a image with pills composed on a background image.
 
         Args:
