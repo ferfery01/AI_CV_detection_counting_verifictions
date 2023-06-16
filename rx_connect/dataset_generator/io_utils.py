@@ -5,6 +5,7 @@ from typing import Any, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
 import numpy as np
 from skimage import io
 
+from rx_connect import SHARED_REMOTE_DIR
 from rx_connect.dataset_generator.transform import resize_bg
 from rx_connect.tools.data_tools import (
     fetch_file_paths_from_remote_folder,
@@ -13,8 +14,6 @@ from rx_connect.tools.data_tools import (
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
-
-_SHARED_DIR = "RxConnectShared"
 
 
 class PillMaskPaths(NamedTuple):
@@ -80,7 +79,7 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
     """
     data_dir = Path(data_dir)
 
-    if str(data_dir).startswith(_SHARED_DIR):
+    if str(data_dir).startswith(SHARED_REMOTE_DIR):
         imgs_path = fetch_file_paths_from_remote_folder(data_dir / "images")
         masks_path = fetch_file_paths_from_remote_folder(data_dir / "masks")
     else:
@@ -116,7 +115,7 @@ def load_image_and_mask(
         mask: The pill mask.
     """
     # Fetch the image and mask from remote server if necessary
-    if str(image_path).startswith(_SHARED_DIR):
+    if str(image_path).startswith(SHARED_REMOTE_DIR):
         image_path = fetch_from_remote(image_path, local_cache_folder=".cache/images")
         mask_path = fetch_from_remote(mask_path, local_cache_folder=".cache/masks")
 
