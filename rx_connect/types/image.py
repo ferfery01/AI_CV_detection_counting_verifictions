@@ -8,9 +8,10 @@ import torchshow as ts
 from PIL import Image
 from skimage import io
 
-from rx_connect.dataset_generator.service import RxImageGenerator
+from rx_connect.core.types.detection import CounterModuleOutput
 from rx_connect.tools.casting import safe_cast
 from rx_connect.tools.logging import setup_logger
+from rx_connect.types.generator import RxImageGenerator
 
 logger = setup_logger()
 
@@ -146,12 +147,11 @@ class RxImageCount(RxImageBase):
         logger.assertion(self._counterObj is not None, "Counter object not set.")
         self._bounding_boxes = self._counterObj.count(self.get_image())
 
-    def get_bounding_boxes(self) -> List[Tuple[Tuple[int, int, int, int], float]]:
-        """
-        Check if the bounding boxes has been produced. If not, count before returning them.
+    def get_bounding_boxes(self) -> List[CounterModuleOutput]:
+        """Check if the bounding boxes has been produced. If not, count before returning them.
 
         Returns:
-            List[Tuple[Tuple[int, int, int, int], float]]: Bounding boxes. Format: [((X, Y, W, H), score), ...]
+            List[CounterModuleOutput]: Bounding boxes. Format: [((X, Y, W, H), score), ...]
         """
         if self._bounding_boxes is None:
             self._count_pills()
@@ -173,10 +173,7 @@ class RxImageCount(RxImageBase):
         Returns:
             List[np.ndarray]: List of cropped image views.
         """
-        return [
-            self.image[int(y1) : int(y2), int(x1) : int(x2)]
-            for (x1, y1, x2, y2), _ in self.get_bounding_boxes()
-        ]
+        return [self.image[y1:y2, x1:x2] for (x1, y1, x2, y2), _ in self.get_bounding_boxes()]
 
 
 class RxImageCountSegment(RxImageCount):

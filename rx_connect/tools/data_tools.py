@@ -16,7 +16,7 @@ password-less SSH set up. Steps:
 def fetch_from_remote(
     remote_path: Union[str, Path],
     server_ip: str = "10.231.51.79",
-    local_cache_folder: Union[str, Path] = "local_cache",
+    cache_dir: Union[str, Path] = "local_cache",
     ignore_exist: bool = False,
     timeout: int = 30,
 ) -> str:
@@ -31,7 +31,7 @@ def fetch_from_remote(
     Args:
         remote_path (str, Path): Full path or relative path (to home) of the remote file/folder.
         server_ip (str): The remote server IP address. Default to the AI Lab GPU server at 10.231.51.79.
-        local_cache_folder (str, Path): The desired name of the caching folder.
+        cache_dir (str, Path): Path to the folder where cached files are stored.
         ignore_exist (bool): Enforce rsync checking time stamp if file/folder already exists.
         timeout (int): Timeout in seconds for the rsync command.
 
@@ -39,10 +39,10 @@ def fetch_from_remote(
         str: Local file name after caching.
     """
     remote_path = Path(remote_path)
-    local_cache_folder = Path(local_cache_folder)
-    local_cache_folder.mkdir(exist_ok=True, parents=True)
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(exist_ok=True, parents=True)
 
-    local_path = local_cache_folder / remote_path.name
+    local_path = cache_dir / remote_path.name
     if not local_path.exists() or ignore_exist:
         try:
             subprocess.run(["rsync", "-ruq", f"{server_ip}:{remote_path}", local_path], timeout=timeout)

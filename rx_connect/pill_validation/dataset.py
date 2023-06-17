@@ -11,8 +11,8 @@ from skimage import io
 from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import DataLoader, Dataset
 
+from rx_connect.core.types.dataset import ePillIDDataset
 from rx_connect.pill_validation.augments import RefConsTransform
-from rx_connect.types.dataset import ePillIDDataset
 
 
 class SingleImagePillID(Dataset):

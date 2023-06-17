@@ -116,8 +116,8 @@ def load_image_and_mask(
     """
     # Fetch the image and mask from remote server if necessary
     if str(image_path).startswith(SHARED_REMOTE_DIR):
-        image_path = fetch_from_remote(image_path, local_cache_folder=".cache/images")
-        mask_path = fetch_from_remote(mask_path, local_cache_folder=".cache/masks")
+        image_path = fetch_from_remote(image_path, cache_dir=".cache/images")
+        mask_path = fetch_from_remote(mask_path, cache_dir=".cache/masks")
 
     # Load the pill image
     image = io.imread(image_path)

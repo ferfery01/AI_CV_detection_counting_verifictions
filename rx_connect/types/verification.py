@@ -30,7 +30,7 @@ class RxVectorization:
         """
         # If remote model path is provided, fetch the model from the remote
         if str(model_path).startswith(SHARED_REMOTE_DIR):
-            model_path = fetch_from_remote(model_path, local_cache_folder=".cache/verification")
+            model_path = fetch_from_remote(model_path, cache_dir=".cache/verification")
 
         logger.assertion(Path(model_path).exists(), f"Model path {model_path} does not exist.")
         self._model_path = model_path

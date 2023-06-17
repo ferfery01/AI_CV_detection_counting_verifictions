@@ -1,6 +1,0 @@
----
-pill_segmentation:
-    model_path: ybelkada/segment-anything
-    model_chkpt: checkpoints/sam_vit_h_4b8939.pth #checkpoints/sam_vit_b_01ec64.pth #checkpoints/sam_vit_h_4b8939.pth #
-    SAM_flag: true
-    stability_score_thresh: 0.5
