@@ -74,17 +74,16 @@ class RxDetection(RxBase):
 
 
 if __name__ == "__main__":
-    from rx_connect.types.image import RxImageBase, RxImageCount
+    from rx_connect.types.image import RxImageCount
 
     img_path = "./data/synthetic/detection/images/0_20.jpg"
     cfg_path = f"{TYPES_DIR}/configs/Dev/counter_config.yml"
 
     # Test the class
-    image_obj = RxImageBase()
-    image_obj.load_from_path(img_path)
-    count_obj = RxImageCount(image_obj)
+    image_obj = RxImageCount()
+    image_obj.load_image(img_path)
 
     pill_count_obj = RxDetection(cfg_path)
-    count_obj.set_counter(pill_count_obj)
+    image_obj.set_counter(pill_count_obj)
 
-    logger.info(f"Number of pills: {count_obj.get_count()}.")
+    logger.info(f"Number of pills: {image_obj.pill_count}.")

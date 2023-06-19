@@ -12,7 +12,6 @@ from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import load_yaml
 from rx_connect.types import TYPES_DIR
 from rx_connect.types.base import RxBase
-from rx_connect.types.image import RxImageBase, RxImageCountSegment
 
 logger = setup_logger()
 
@@ -75,15 +74,16 @@ class RxSegmentation(RxBase):
 
 
 if __name__ == "__main__":
+    from rx_connect.types.image import RxImageCountSegment
+
     # test example
     test_image_path = "/Users/sxiangab/Documents/synthetic3k_simple_new/images/1_17.jpg"
 
     # instantiate objects
     segmentObj = RxSegmentation()
-    imageObj = RxImageBase()
-    imageObj.load_from_path(test_image_path)
-    countSegmentObj = RxImageCountSegment(imageObj)
-    countSegmentObj.set_segmenter(segmentObj)
+    imageObj = RxImageCountSegment()
+    imageObj.load_image(test_image_path)
+    imageObj.set_segmenter(segmentObj)
 
     # Full Segmentation -> results are list of [bbox, mask, score]
-    results = countSegmentObj.get_full_segmentation()
+    results = imageObj.full_segmentation
