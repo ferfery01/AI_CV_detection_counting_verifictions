@@ -10,6 +10,7 @@ from skimage import io
 from sklearn.metrics.pairwise import cosine_similarity
 
 from rx_connect.core.types.detection import CounterModuleOutput
+from rx_connect.core.types.segment import SegmentResult
 from rx_connect.tools.logging import setup_logger
 from rx_connect.types.detection import RxDetection
 from rx_connect.types.generator import RxImageGenerator
@@ -20,18 +21,14 @@ logger = setup_logger()
 
 
 class RxImageBase:
-    """
-    Base class for RxImage objects. This class implements the loading methods.
-    """
+    """Base class for RxImage objects. This class implements the loading methods."""
 
     def __init__(self) -> None:
         self._image: Optional[np.ndarray] = None
         self._ref_image: Optional[np.ndarray] = None
 
     def load_from_camera(self) -> None:
-        """
-        Loads the image from default camera.
-        """
+        """Loads the image from default camera."""
         self._image = cv2.VideoCapture(0)
 
     def load_image(self, image: Union[np.ndarray, torch.Tensor, Image.Image, str, Path]) -> None:
@@ -70,8 +67,7 @@ class RxImageBase:
 
     @property
     def ref_image(self) -> np.ndarray:
-        """
-        Access the reference image property.
+        """Access the reference image property.
         Check if the reference image has been loaded, and return the reference image.
 
         Returns:
@@ -82,8 +78,7 @@ class RxImageBase:
 
     @property
     def image(self) -> np.ndarray:
-        """
-        Access the image property.
+        """Access the image property.
         Check if the image has been loaded, and return the image.
 
         Returns:
@@ -94,9 +89,7 @@ class RxImageBase:
 
 
 class RxImageCount(RxImageBase):
-    """
-    Image class for counting methods. This class inherits from RxImageBase for the loading methods.
-    """
+    """Image class for counting methods. This class inherits from RxImageBase for the loading methods."""
 
     def __init__(self, inherit_image: Optional[RxImageBase] = None) -> None:
         """
@@ -112,8 +105,7 @@ class RxImageCount(RxImageBase):
             self.__dict__.update(inherit_image.__dict__)
 
     def set_counter(self, counterObj: RxDetection) -> None:
-        """
-        Sets the counter object. Reset any existing results to None when there's a new counter.
+        """Sets the counter object. Reset any existing results to None when there's a new counter.
 
         Args:
             counterObj (Counter): Counter object.
@@ -140,8 +132,7 @@ class RxImageCount(RxImageBase):
 
     @property
     def bounding_boxes(self) -> List[CounterModuleOutput]:
-        """
-        Access the bounding boxs property.
+        """Access the bounding boxs property.
         Check if the bounding boxes has been produced. If not, count before returning them.
 
         Returns:
@@ -154,8 +145,7 @@ class RxImageCount(RxImageBase):
 
     @property
     def pill_count(self) -> int:
-        """
-        Return the length of the bounding boxes as the count.
+        """Return the length of the bounding boxes as the count.
 
         Returns:
             int: Count.
@@ -164,8 +154,7 @@ class RxImageCount(RxImageBase):
 
     @property
     def ROIs(self) -> List[np.ndarray]:
-        """
-        Return the cropped image views as the regions of interest (ROIs).
+        """Return the cropped image views as the regions of interest (ROIs).
 
         Returns:
             List[np.ndarray]: List of cropped image views.
@@ -174,27 +163,25 @@ class RxImageCount(RxImageBase):
 
 
 class RxImageCountSegment(RxImageCount):
-    """
-    Image class for segmentation methods. This class inherits from RxImageCount for the loading and counting methods.
+    """Image class for segmentation methods. This class inherits from RxImageCount for
+    the loading and counting methods.
     """
 
     def __init__(self, inherit_image: Optional[RxImageBase] = None) -> None:
-        """
-        Constructor.
+        """Constructor.
 
         Args:
             inherit_image (Optional[RxImageBase]): Inherited image.
         """
         super().__init__()
-        self._seg_mask_full: Optional[np.ndarray] = None
-        self._seg_mask_ROI: Optional[np.ndarray] = None
+        self._seg_mask_full: Optional[List[SegmentResult]] = None
+        self._seg_mask_ROI: Optional[List[List[SegmentResult]]] = None
         self._segmenterObj: Optional[RxSegmentation] = None
         if isinstance(inherit_image, RxImageBase):
             self.__dict__.update(inherit_image.__dict__)
 
     def set_segmenter(self, segmenterObj: RxSegmentation) -> None:
-        """
-        Sets the segmenter object. Reset any existing results to None when there's a new segmenter.
+        """Sets the segmenter object. Reset any existing results to None when there's a new segmenter.
 
         Args:
             segmenterObj (Segmenter): Segmenter object.
@@ -204,12 +191,11 @@ class RxImageCountSegment(RxImageCount):
         self._seg_mask_ROI = None
 
     @property
-    def full_segmentation(self) -> np.ndarray:
-        """
-        Check if the full segmentation has been produced. If not, segment before returning it.
+    def full_segmentation(self) -> List[SegmentResult]:
+        """Check if the full segmentation has been produced. If not, segment before returning it.
 
         Returns:
-            np.ndarray: Full segmentation.
+            List[SegmentResult]: List of segmentation results.
         """
         if self._seg_mask_full is None:
             logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
@@ -217,12 +203,11 @@ class RxImageCountSegment(RxImageCount):
         return self._seg_mask_full
 
     @property
-    def ROI_segmentation(self) -> List[np.ndarray]:
-        """
-        Check if the ROI segmentation has been produced. If not, segment before returning it.
+    def ROI_segmentation(self) -> List[List[SegmentResult]]:
+        """Check if the ROI segmentation has been produced. If not, segment before returning it.
 
         Returns:
-            List[np.ndarray]: List of ROI segmentations.
+            List[List[SegmentResult]]: Segmentation results for each ROI.
         """
         if self._seg_mask_ROI is None:
             logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
@@ -231,14 +216,12 @@ class RxImageCountSegment(RxImageCount):
 
 
 class RxImageVerify(RxImageCountSegment):
-    """
-    Image class for verification methods.
+    """Image class for verification methods.
     This class inherits from RxImageCountSegment for the loading, counting, and segmentation methods.
     """
 
     def __init__(self, inherit_image: Optional[RxImageBase] = None) -> None:
-        """
-        Constructor.
+        """Constructor.
 
         Args:
             inherit_image (Optional[RxImageBase]): Inherited image.
@@ -248,12 +231,12 @@ class RxImageVerify(RxImageCountSegment):
         self._vectorized_ref: Optional[np.ndarray] = None
         self._similarity_scores: Optional[List[float]] = None
         self._vectorizerObj: Optional[RxVectorization] = None
+
         if isinstance(inherit_image, RxImageBase):
             self.__dict__.update(inherit_image.__dict__)
 
     def set_vectorizer(self, vectorizerObj: RxVectorization) -> None:
-        """
-        Sets the vectorizer object. Reset any existing results to None when there's a new vectorizer.
+        """Sets the vectorizer object. Reset any existing results to None when there's a new vectorizer.
 
         Args:
             vectorizerObj (vectorizer): Vectorizer object.
@@ -262,13 +245,13 @@ class RxImageVerify(RxImageCountSegment):
         self._vectorized_ROIs = None
         self._vectorized_ref = None
         self._similarity_scores = None
+
         # Default similarity function is cosine similarity
         self._similarity_fn = cosine_similarity
 
     @property
     def vectorized_ref(self) -> np.ndarray:
-        """
-        Access property of the vectorized reference image; vectorize it if not already.
+        """Access property of the vectorized reference image; vectorize it if not already.
 
         Returns:
             np.ndarray: The vectorized reference image.
@@ -280,8 +263,7 @@ class RxImageVerify(RxImageCountSegment):
 
     @property
     def vectorized_ROIs(self) -> List[np.ndarray]:
-        """
-        Access property of the vectorized ROIs; vectorize them if not already.
+        """Access property of the vectorized ROIs; vectorize them if not already.
 
         Returns:
             List[np.ndarray]: The vectorized ROIs.
