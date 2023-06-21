@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import ClassVar, Union, cast
+from typing import ClassVar, List, Union, cast
 
 import cv2
 import numpy as np
@@ -10,6 +10,7 @@ from rx_connect.core.utils.cv_utils import equalize_histogram
 from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import read_pickle
+from rx_connect.tools.timers import timer
 
 logger = setup_logger()
 
@@ -80,6 +81,9 @@ class RxVectorization:
 
         return final_vector
 
-    def encode(self, image: np.ndarray) -> np.ndarray:
+    @timer
+    def encode(self, input: Union[np.ndarray, List[np.ndarray]]) -> Union[np.ndarray, List[np.ndarray]]:
         """Encodes the image using the VLAD model. This is an alias for __call__."""
-        return self(image)
+        if isinstance(input, np.ndarray):
+            return self(input)
+        return [self(image) for image in input]

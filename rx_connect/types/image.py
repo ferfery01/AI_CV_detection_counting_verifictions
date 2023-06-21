@@ -113,10 +113,31 @@ class RxImageCount(RxImageBase):
         self._counterObj = counterObj
         self._bounding_boxes = None
 
-    def visualize_ROIs(self, img_per_col: int = 5) -> None:
+    def visualize_ROIs(self, img_per_col: int = 5, labels: Optional[List[str]] = None) -> None:
         """Utility function to visualize cropped ROIs.
-        First change the list into a list of list, then visualize."""
+        First change the list into a list of list, then visualize.
+
+        Args:
+            img_per_col (int): The number of images per column.
+            labels (list[str]): The labels to show with the ROIs.
+        """
+
+        def label_img(img: np.ndarray, label: Optional[str]) -> np.ndarray:
+            if label is None:
+                return img
+            labeled_img = np.full(
+                (img.shape[0] + 50, img.shape[1], img.shape[2]),
+                (0, 255, 255),
+                dtype=img.dtype,
+            )
+            labeled_img[50:, :, :] = img
+            cv2.putText(labeled_img, label, (5, 40), cv2.FONT_HERSHEY_PLAIN, 2.5, (255, 0, 0), thickness=2)
+            return labeled_img
+
         show_imgs = self.ROIs
+        if labels is not None:
+            show_imgs = [label_img(img, labels[i]) for i, img in enumerate(show_imgs)]
+
         show_img_reordered = [
             show_imgs[i * img_per_col : i * img_per_col + img_per_col]
             for i in range(-(len(show_imgs) // -img_per_col))
@@ -253,6 +274,16 @@ class RxImageVerify(RxImageCountSegment):
         # Default similarity function is cosine similarity
         self._similarity_fn = cosine_similarity
 
+    def visualize_similarity_scores(self, img_per_col: int = 5) -> None:
+        """
+        Utility function to visualize similarity scores along with ROIs.
+
+        Args:
+            img_per_col (int): The number of images per column.
+        """
+        labels = [f"{i}: {score*100:.1f}%" for i, score in enumerate(self.similarity_scores)]
+        self.visualize_ROIs(labels=labels)
+
     @property
     def vectorized_ref(self) -> np.ndarray:
         """Access property of the vectorized reference image; vectorize it if not already.
@@ -274,9 +305,7 @@ class RxImageVerify(RxImageCountSegment):
         """
         if self._vectorized_ROIs is None:
             logger.assertion(self._vectorizerObj is not None, "Vectorizer object not set.")
-            self._vectorized_ROIs = [
-                cast(RxVectorization, self._vectorizerObj).encode(ROI) for ROI in self.ROIs
-            ]
+            self._vectorized_ROIs = cast(RxVectorization, self._vectorizerObj).encode(self.ROIs)
         return self._vectorized_ROIs
 
     @property

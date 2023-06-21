@@ -12,6 +12,7 @@ from rx_connect.dataset_generator.io_utils import (
     load_pill_mask_paths,
     load_random_pills_and_masks,
 )
+from rx_connect.tools.timers import timer
 
 
 @dataclass
@@ -129,6 +130,7 @@ class RxImageGenerator:
             thresh=self.thresh,
         )
 
+    @timer
     def generate(self, new_bg: bool = False, new_pill: bool = False) -> np.ndarray:
         """Generate a image with pills composed on a background image.
 

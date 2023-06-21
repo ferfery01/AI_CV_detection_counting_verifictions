@@ -12,6 +12,7 @@ from rx_connect.dataset_generator.sam_utils import get_best_mask
 from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import load_yaml
+from rx_connect.tools.timers import timer
 from rx_connect.types import TYPES_DIR
 from rx_connect.types.base import RxBase
 
@@ -91,6 +92,7 @@ class RxSegmentation(RxBase):
 
         return results
 
+    @timer
     def segment_full(self, image: np.ndarray, bboxes: List[CounterModuleOutput]) -> List[SegmentResult]:
         """
         Return the best full segmentation mask,
