@@ -199,7 +199,9 @@ class RxImageCountSegment(RxImageCount):
         """
         if self._seg_mask_full is None:
             logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
-            self._seg_mask_full = cast(RxSegmentation, self._segmenterObj).segment(self.image)
+            self._seg_mask_full = cast(RxSegmentation, self._segmenterObj).segment_full(
+                self.image, self.bounding_boxes
+            )
         return self._seg_mask_full
 
     @property
@@ -211,7 +213,9 @@ class RxImageCountSegment(RxImageCount):
         """
         if self._seg_mask_ROI is None:
             logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
-            self._seg_mask_ROI = [cast(RxSegmentation, self._segmenterObj).segment(ROI) for ROI in self.ROIs]
+            self._seg_mask_ROI = [
+                cast(RxSegmentation, self._segmenterObj).segment_ROI(ROI) for ROI in self.ROIs
+            ]
         return self._seg_mask_ROI
 
 

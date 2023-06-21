@@ -1,10 +1,11 @@
-from typing import Any, Dict, List
+from typing import List
 
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
 from segment_anything import SamAutomaticMaskGenerator, build_sam
 
+from rx_connect.core.types.segment import SamHqSegmentResult
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
@@ -17,12 +18,12 @@ model = build_sam(checkpoint=_ckpt_path).to(device)
 MASK_GENERATOR = SamAutomaticMaskGenerator(model, min_mask_region_area=5000)
 
 
-def get_best_mask(masks: List[Dict[str, Any]]) -> np.ndarray:
+def get_best_mask(masks: List[SamHqSegmentResult]) -> np.ndarray:
     """Get the best mask from a list of masks. The best mask is the one with the highest
     sum of pixels.
 
     Args:
-        masks (List[Dict[str, Any]]): A list of dictionaries. Each dictionary should have a
+        masks (List[SamHqSegmentResult]): A list of SamHqSegmentResult. Each dictionary should have a
             key "segmentation" with a 2D numpy array as its value.
 
     Returns:
