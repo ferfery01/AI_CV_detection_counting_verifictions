@@ -1,18 +1,16 @@
 # Tools
 In this folder, there are multiple tool functions that'll be shared among several modules.
-</br></br>
 
 ## Data fetch from remote server (Download)
-Requirement - password-less SSH
+**Requirements:** For the functions in this file to work, you need to be one a VPN and have password-less SSH set up. Steps:
 1. Generate ssh keys (hit <enter> to the end)
-```
-ssh-keygen
-```
+    ```
+    ssh-keygen
+    ```
 2. Send ssh public key to remote server
-```
-ssh-copy-id <user_name>@10.231.51.79
-```
-</br>
+    ```
+    ssh-copy-id <user_name>@10.231.51.79
+    ```
 
 Example 1 - files
 ```
@@ -34,8 +32,3 @@ print(data_tools.fetch_from_remote(remote_folder_name))
 Function returns the local path "`local_cache/test_remote_folder`", where the folder and all the files it contains are cached recursively.
 
 </br>
-
-## Safe cast
-Return the type of object and bypass ** linter None-type checking errors **.
-
-` safe_cast(input: Any | None) -> Any`
