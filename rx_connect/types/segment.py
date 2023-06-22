@@ -6,8 +6,10 @@ import torch
 from huggingface_hub import hf_hub_download
 from segment_anything import SamAutomaticMaskGenerator, build_sam
 
+from rx_connect import CACHE_DIR
 from rx_connect.core.types.segment import SamHqSegmentResult, SegmentResult
 from rx_connect.tools.data_tools import fetch_from_remote
+from rx_connect.tools.device import get_best_available_device
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import load_yaml
 from rx_connect.tools.timers import timer
@@ -31,18 +33,23 @@ class RxSegmentation(RxBase):
         self._stability_score_thresh = conf.segmentation.stability_score_thresh
 
     def _load_model(self) -> None:
-        """Loads the model. There are two options:
+        """Loads the model from a checkpoint on the best available device. There are two options:
         1. If SAM_flag is True, then the model is loaded from HuggingFace Hub.
         2. If SAM_flag is False, then the model is loaded from a local path.
         """
         if self._SAM_flag:
             ckpt_path = hf_hub_download(repo_id="ybelkada/segment-anything", filename=self._model_ckpt)
+            device = get_best_available_device()
             self._model = SamAutomaticMaskGenerator(
-                build_sam(checkpoint=ckpt_path), stability_score_thresh=self._stability_score_thresh
+                build_sam(checkpoint=ckpt_path).to(device),
+                stability_score_thresh=self._stability_score_thresh,
             )
+            logger.info(f"Loaded SAM-HQ model from {ckpt_path} on {device}.")
         else:
             # NOTE: This functionality hasn't been tested yet.
-            self._model = torch.load(fetch_from_remote(self._model_ckpt, cache_dir=".cache/segmentation"))
+            self._model = torch.load(
+                fetch_from_remote(self._model_ckpt, cache_dir=CACHE_DIR / "segmentation")
+            )
 
     def _preprocess(self, image: np.ndarray) -> np.ndarray:
         return image

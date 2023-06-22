@@ -5,7 +5,7 @@ import numpy as np
 from super_gradients.training import models as yolo_model
 from super_gradients.training.models.predictions import DetectionPrediction
 
-from rx_connect import SHARED_REMOTE_DIR
+from rx_connect import CACHE_DIR
 from rx_connect.core.types.detection import CounterModuleOutput
 from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.logging import setup_logger
@@ -33,13 +33,12 @@ class RxDetection(RxBase):
     def _load_model(self) -> None:
         """Loads the YOLO-NAS model."""
         # Fetch the model from the remote if it is not already in the cache.
-        if self._model_path.startswith(SHARED_REMOTE_DIR):
-            self._model_path = fetch_from_remote(self._model_path, cache_dir=".cache/counting")
-        logger.assertion(Path(self._model_path).exists(), f"Model path {self._model_path} does not exist.")
+        self._model_path = fetch_from_remote(self._model_path, cache_dir=CACHE_DIR / "counting")
+        logger.assertion(self._model_path.exists(), f"Model path {self._model_path} does not exist.")
 
         # Load the model.
         self._model = yolo_model.get(
-            self._yolo_model, num_classes=self._n_classes, checkpoint_path=self._model_path
+            self._yolo_model, num_classes=self._n_classes, checkpoint_path=str(self._model_path)
         )
         self._model.eval()
 

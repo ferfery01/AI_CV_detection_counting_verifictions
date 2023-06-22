@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, Union
 import albumentations as A
 import numpy as np
 
+from rx_connect import SHARED_EPILL_DATA_DIR
 from rx_connect.dataset_generator.composition import generate_image
 from rx_connect.dataset_generator.io_utils import (
     PillMaskPaths,
@@ -29,7 +30,7 @@ class RxImageGenerator:
 
     """
 
-    images_dir: Union[str, Path] = "RxConnectShared/ePillID/pills/"
+    images_dir: Union[str, Path] = SHARED_EPILL_DATA_DIR
     """Directory containing the pill images and masks. It can either be a local directory
     or remote directory.
     """

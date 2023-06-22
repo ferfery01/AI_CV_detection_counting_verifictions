@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from rx_connect.core.types.detection import CounterModuleOutput
 from rx_connect.core.types.segment import SamHqSegmentResult, SegmentResult
-from rx_connect.dataset_generator.sam_utils import get_best_mask
+from rx_connect.core.utils.sam_utils import get_best_mask
 from rx_connect.tools.logging import setup_logger
 from rx_connect.types.detection import RxDetection
 from rx_connect.types.generator import RxImageGenerator
@@ -196,6 +196,7 @@ class RxImageCountSegment(RxImageCount):
             inherit_image (Optional[RxImageBase]): Inherited image.
         """
         super().__init__()
+        self._best_seg_mask: Optional[np.ndarray] = None
         self._seg_mask_full: Optional[List[SamHqSegmentResult]] = None
         self._seg_mask_ROI: Optional[List[List[SegmentResult]]] = None
         self._segmenterObj: Optional[RxSegmentation] = None
@@ -209,6 +210,7 @@ class RxImageCountSegment(RxImageCount):
             segmenterObj (Segmenter): Segmenter object.
         """
         self._segmenterObj = segmenterObj
+        self._best_seg_mask = None
         self._seg_mask_full = None
         self._seg_mask_ROI = None
 
@@ -250,8 +252,9 @@ class RxImageCountSegment(RxImageCount):
         Returns:
             np.ndarray: The mask that separates the background and all the pills.
         """
-        best_seg_mask = get_best_mask(self.fully_segmented_image)
-        return best_seg_mask
+        if self._best_seg_mask is None:
+            self._best_seg_mask = get_best_mask(self.fully_segmented_image)
+        return self._best_seg_mask
 
     @property
     def cropped_segment(self) -> List[np.ndarray]:

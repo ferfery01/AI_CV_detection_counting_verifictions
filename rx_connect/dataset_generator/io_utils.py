@@ -5,10 +5,11 @@ from typing import Any, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
 import numpy as np
 from skimage import io
 
-from rx_connect import SHARED_REMOTE_DIR
+from rx_connect import CACHE_DIR
 from rx_connect.dataset_generator.transform import resize_bg
+from rx_connect.tools import is_remote_dir
 from rx_connect.tools.data_tools import (
-    fetch_file_paths_from_remote_folder,
+    fetch_file_paths_from_remote_dir,
     fetch_from_remote,
 )
 from rx_connect.tools.logging import setup_logger
@@ -79,9 +80,9 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
     """
     data_dir = Path(data_dir)
 
-    if str(data_dir).startswith(SHARED_REMOTE_DIR):
-        imgs_path = fetch_file_paths_from_remote_folder(data_dir / "images")
-        masks_path = fetch_file_paths_from_remote_folder(data_dir / "masks")
+    if is_remote_dir(data_dir):
+        imgs_path = fetch_file_paths_from_remote_dir(data_dir / "images")
+        masks_path = fetch_file_paths_from_remote_dir(data_dir / "masks")
     else:
         imgs_path = list((data_dir / "images").glob("*.jpg"))
         masks_path = list((data_dir / "masks").glob("*.jpg"))
@@ -114,10 +115,9 @@ def load_image_and_mask(
         img: The pill image.
         mask: The pill mask.
     """
-    # Fetch the image and mask from remote server if necessary
-    if str(image_path).startswith(SHARED_REMOTE_DIR):
-        image_path = fetch_from_remote(image_path, cache_dir=".cache/images")
-        mask_path = fetch_from_remote(mask_path, cache_dir=".cache/masks")
+    # Fetch the image and mask from remote server, if necessary
+    image_path = fetch_from_remote(image_path, cache_dir=CACHE_DIR / "images")
+    mask_path = fetch_from_remote(mask_path, cache_dir=CACHE_DIR / "masks")
 
     # Load the pill image
     image = io.imread(image_path)
@@ -125,7 +125,7 @@ def load_image_and_mask(
     # Load the pill mask
     logger.assertion(
         Path(mask_path).exists(),
-        f"Could not find mask for image {Path(image_path).name}. Did you run `mask_generator`?",
+        f"Could not find mask for image {image_path.name}. Did you run `mask_generator`?",
     )
     mask = io.imread(mask_path, as_gray=True)
 

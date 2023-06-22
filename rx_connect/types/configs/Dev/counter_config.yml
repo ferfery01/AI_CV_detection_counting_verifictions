@@ -1,7 +1,7 @@
 ---
 detection:
     model: yolo_nas_l
-    model_path: RxConnectShared/checkpoints/counter/best_model.pth
+    model_path: /media/RxConnectShared/checkpoints/counter/best_model.pth
     classes:
         - Pill
     conf: 0.7

@@ -7,6 +7,7 @@ import cv2
 from joblib import Parallel, delayed
 from tqdm import trange
 
+from rx_connect import SHARED_EPILL_DATA_DIR
 from rx_connect.dataset_generator.annotations import create_yolo_annotations
 from rx_connect.dataset_generator.composition import generate_image
 from rx_connect.dataset_generator.io_utils import (
@@ -93,7 +94,7 @@ def generate_samples(
 @click.option(
     "-p",
     "--pill-mask-path",
-    default="RxConnectShared/ePillID/pills/",
+    default=SHARED_EPILL_DATA_DIR,
     show_default=True,
     help="Path to the folder with pill masks. It can be a local directory or a remote path.",
 )

@@ -2,6 +2,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Union
 
+from rx_connect import CACHE_DIR, SERVER_IP
+from rx_connect.tools import is_remote_dir
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
@@ -15,18 +17,16 @@ password-less SSH set up. Steps:
 
 def fetch_from_remote(
     remote_path: Union[str, Path],
-    server_ip: str = "10.231.51.79",
-    cache_dir: Union[str, Path] = "local_cache",
+    *,
+    server_ip: str = SERVER_IP,
+    cache_dir: Union[str, Path] = CACHE_DIR,
     ignore_exist: bool = False,
     timeout: int = 30,
-) -> str:
-    """
-    Fetch data from remote server if not yet cached.
-
-    Note: requires password-less SSH. Steps:
-        1. $ ssh-keygen
-            (you can hit <enter> to the end)
-        2. $ ssh-copy-id <user_name>@10.231.51.79
+) -> Path:
+    """Fetch a file/folder from a remote server if this function is executed outside the remote server
+    (e.g. on a local machine), otherwise it returns the original path. The file/folder will be cached
+    in the cache_dir. If the file/folder already exists locally, then it will not be fetched
+    unless `ignore_exist` is set to True.
 
     Args:
         remote_path (str, Path): Full path or relative path (to home) of the remote file/folder.
@@ -36,12 +36,19 @@ def fetch_from_remote(
         timeout (int): Timeout in seconds for the rsync command.
 
     Returns:
-        str: Local file name after caching.
+        Path: Path to the cached file/folder. If on the remote server, then it returns the original path.
     """
     remote_path = Path(remote_path)
+
+    # Return the original path, if on the remote server
+    if not is_remote_dir(remote_path):
+        return remote_path
+
+    # Create the cache directory, if it does not exist
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(exist_ok=True, parents=True)
 
+    # Fetch the file/folder from the remote server, if it does not exist locally
     local_path = cache_dir / remote_path.name
     if not local_path.exists() or ignore_exist:
         try:
@@ -51,11 +58,11 @@ def fetch_from_remote(
             raise e
     assert local_path.exists(), f"Error: Failed to cache {remote_path} from {server_ip}."
 
-    return str(local_path)
+    return local_path
 
 
-def fetch_file_paths_from_remote_folder(
-    remote_dir: Union[str, Path], server_ip: str = "10.231.51.79", timeout: int = 30
+def fetch_file_paths_from_remote_dir(
+    remote_dir: Union[str, Path], *, server_ip: str = SERVER_IP, timeout: int = 30
 ) -> List[Path]:
     """Fetch the list of files path in a remote directory.
 
@@ -99,7 +106,8 @@ def fetch_file_paths_from_remote_folder(
 def push_to_remote(
     local_path: Union[str, Path],
     remote_storage_folder: str,
-    server_ip: str = "10.231.51.79",
+    *,
+    server_ip: str = SERVER_IP,
 ) -> str:
     """
     Push local data to remote server.

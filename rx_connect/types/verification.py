@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from vlad import VLAD
 
-from rx_connect import SHARED_REMOTE_DIR
+from rx_connect import CACHE_DIR, SHARED_REMOTE_DIR
 from rx_connect.core.utils.cv_utils import equalize_histogram
 from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.logging import setup_logger
@@ -19,7 +19,8 @@ class RxVectorization:
     num_features: ClassVar[int] = 1000
 
     def __init__(
-        self, model_path: Union[str, Path] = "RxConnectShared/checkpoints/verification/vlad_1000_rn_16_v1.pkl"
+        self,
+        model_path: Union[str, Path] = f"{SHARED_REMOTE_DIR}/checkpoints/verification/vlad_1000_rn_16_v1.pkl",
     ) -> None:
         """Initializes the RxVerification object.
 
@@ -30,8 +31,7 @@ class RxVectorization:
             AssertionError: If the model path does not exist.
         """
         # If remote model path is provided, fetch the model from the remote
-        if str(model_path).startswith(SHARED_REMOTE_DIR):
-            model_path = fetch_from_remote(model_path, cache_dir=".cache/verification")
+        model_path = fetch_from_remote(model_path, cache_dir=CACHE_DIR / "verification")
 
         logger.assertion(Path(model_path).exists(), f"Model path {model_path} does not exist.")
         self._model_path = model_path
