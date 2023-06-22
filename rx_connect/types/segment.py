@@ -6,9 +6,7 @@ import torch
 from huggingface_hub import hf_hub_download
 from segment_anything import SamAutomaticMaskGenerator, build_sam
 
-from rx_connect.core.types.detection import CounterModuleOutput
 from rx_connect.core.types.segment import SamHqSegmentResult, SegmentResult
-from rx_connect.dataset_generator.sam_utils import get_best_mask
 from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import load_yaml
@@ -58,27 +56,25 @@ class RxSegmentation(RxBase):
         else:
             return self._model.predict(image)  # NOTE: Not tested yet.
 
-    def _postprocess(
-        self, pred: List[SamHqSegmentResult], bbox_xyxy_list: List[List[int]]
-    ) -> List[SamHqSegmentResult]:
+    def _postprocess(self, prediction: List[SamHqSegmentResult]) -> List[SegmentResult]:
         """
-        Return the ROI of mask from the full segmented mask.
-        First, select the best mask from a lisf of masks.
-        Then, crop out that best mask with the provided ROI from detection module.
+        Convert and return the result as List[SegmentResult].
 
         Args:
-            masks (List[Dict[str, Any]]): A list of masks.
-            bbox (CounterModuleOutput): Bounding box from detection module.
+            masks (List[SamHqSegmentResult]): A list of output masks.
+
         Returns:
-            cropped masks (SegmentResult): The cropped masks from the best mask
+            List[SegmentResult]: The best mask for the fore/background separation.
         """
-        best_seg_mask = get_best_mask(pred)
+        return [
+            SegmentResult(bbox=result["bbox"], mask=result["segmentation"], score=result["stability_score"])
+            for result in prediction
+        ]
 
-        return [best_seg_mask[y1:y2, x1:x2] for (x1, y1, x2, y2) in bbox_xyxy_list]
-
-    def _get_raw_seg_results(self, image: np.ndarray) -> List[SamHqSegmentResult]:
+    @timer
+    def segment_full(self, image: np.ndarray) -> List[SamHqSegmentResult]:
         """
-        Obtain raw segmentation results
+        Perform full segmentation.
 
         Args:
             image (np.ndarray): Input image. Single image is expected.
@@ -92,33 +88,6 @@ class RxSegmentation(RxBase):
 
         return results
 
-    @timer
-    def segment_full(self, image: np.ndarray, bboxes: List[CounterModuleOutput]) -> List[SegmentResult]:
-        """
-        Return the best full segmentation mask,
-        then using bbox from detection module to crop the ROI masks.
-
-        Args:
-            image (np.ndarray): Input image. Single image is expected.
-            bbox (CounterModuleOutput): Bounding box from detection module.
-
-        Returns:
-                List[SegmentResult]: List of (bbox, mask, score) pairs.
-        """
-
-        results = self._get_raw_seg_results(image)
-
-        logger.assertion(bboxes is not None, "bboxes are not available.")
-        bbox_xyxy_list = [item.bbox for item in bboxes]
-        bbox_score_list = [item.scores for item in bboxes]
-
-        output_results = self._postprocess(results, bbox_xyxy_list)
-
-        return [
-            SegmentResult(bbox=bbox, mask=mask, score=score)
-            for bbox, mask, score in zip(bbox_xyxy_list, output_results, bbox_score_list)
-        ]
-
     def segment_ROI(self, image: np.ndarray) -> List[SegmentResult]:
         """
         Returns all the segmentation masks for an input image (ROI) with
@@ -130,12 +99,10 @@ class RxSegmentation(RxBase):
         Returns:
             List[SegmentResult]: List of (bbox, mask and score) pairs.
         """
-        results = self._get_raw_seg_results(image)
+        raw_result = self.segment_full(image)
+        processed_result = self._postprocess(raw_result)
 
-        return [
-            SegmentResult(bbox=result["bbox"], mask=result["segmentation"], score=result["stability_score"])
-            for result in results
-        ]
+        return processed_result
 
 
 if __name__ == "__main__":
@@ -159,4 +126,4 @@ if __name__ == "__main__":
     countSegmentObj.set_segmenter(segmentObj)
 
     # Full Segmentation -> results are list of [bbox, mask, score]
-    results = countSegmentObj.full_segmentation
+    results = countSegmentObj.fully_segmented_image

@@ -10,7 +10,8 @@ from skimage import io
 from sklearn.metrics.pairwise import cosine_similarity
 
 from rx_connect.core.types.detection import CounterModuleOutput
-from rx_connect.core.types.segment import SegmentResult
+from rx_connect.core.types.segment import SamHqSegmentResult, SegmentResult
+from rx_connect.dataset_generator.sam_utils import get_best_mask
 from rx_connect.tools.logging import setup_logger
 from rx_connect.types.detection import RxDetection
 from rx_connect.types.generator import RxImageGenerator
@@ -113,12 +114,12 @@ class RxImageCount(RxImageBase):
         self._counterObj = counterObj
         self._bounding_boxes = None
 
-    def visualize_ROIs(self, img_per_col: int = 5, labels: Optional[List[str]] = None) -> None:
+    def visualize_ROIs(self, img_per_row: int = 5, labels: Optional[List[str]] = None) -> None:
         """Utility function to visualize cropped ROIs.
         First change the list into a list of list, then visualize.
 
         Args:
-            img_per_col (int): The number of images per column.
+            img_per_row (int): The number of images per row.
             labels (list[str]): The labels to show with the ROIs.
         """
 
@@ -139,8 +140,8 @@ class RxImageCount(RxImageBase):
             show_imgs = [label_img(img, labels[i]) for i, img in enumerate(show_imgs)]
 
         show_img_reordered = [
-            show_imgs[i * img_per_col : i * img_per_col + img_per_col]
-            for i in range(-(len(show_imgs) // -img_per_col))
+            show_imgs[i * img_per_row : i * img_per_row + img_per_row]
+            for i in range(-(len(show_imgs) // -img_per_row))
         ]
         ts.show(show_img_reordered)
 
@@ -195,7 +196,7 @@ class RxImageCountSegment(RxImageCount):
             inherit_image (Optional[RxImageBase]): Inherited image.
         """
         super().__init__()
-        self._seg_mask_full: Optional[List[SegmentResult]] = None
+        self._seg_mask_full: Optional[List[SamHqSegmentResult]] = None
         self._seg_mask_ROI: Optional[List[List[SegmentResult]]] = None
         self._segmenterObj: Optional[RxSegmentation] = None
         if isinstance(inherit_image, RxImageBase):
@@ -211,19 +212,60 @@ class RxImageCountSegment(RxImageCount):
         self._seg_mask_full = None
         self._seg_mask_ROI = None
 
+    def visualize_background(self) -> None:
+        """Visualize the background segment."""
+        ts.show([self.image, self.background_segment])
+
+    def visualize_cropped_segmentation(self, img_per_row: int = 5) -> None:
+        """
+        Visualize the cropped segmentations.
+
+        Args:
+            img_per_row (int): The number of images per row.
+        """
+        show_imgs = self.cropped_segment
+        show_img_reordered = [
+            show_imgs[i * img_per_row : i * img_per_row + img_per_row]
+            for i in range(-(len(show_imgs) // -img_per_row))
+        ]
+        ts.show(show_img_reordered)
+
     @property
-    def full_segmentation(self) -> List[SegmentResult]:
+    def fully_segmented_image(self) -> List[SamHqSegmentResult]:
         """Check if the full segmentation has been produced. If not, segment before returning it.
 
         Returns:
-            List[SegmentResult]: List of segmentation results.
+            List[SamHqSegmentResult]: List of segmentation results.
         """
         if self._seg_mask_full is None:
             logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
-            self._seg_mask_full = cast(RxSegmentation, self._segmenterObj).segment_full(
-                self.image, self.bounding_boxes
-            )
+            self._seg_mask_full = cast(RxSegmentation, self._segmenterObj).segment_full(self.image)
         return self._seg_mask_full
+
+    @property
+    def background_segment(self) -> np.ndarray:
+        """
+        From the segmentation results (self.fully_segmented_image), choose the one containing all pills.
+
+        Returns:
+            np.ndarray: The mask that separates the background and all the pills.
+        """
+        best_seg_mask = get_best_mask(self.fully_segmented_image)
+        return best_seg_mask
+
+    @property
+    def cropped_segment(self) -> List[np.ndarray]:
+        """
+        Return the cropped mask from the full background mask.
+
+        Returns:
+            Tuple:
+                List[np.ndarray]: The cropped masks from the full background mask
+        """
+
+        bbox_xyxy_list = [item.bbox for item in self.bounding_boxes]
+        cropped_masks = [self.background_segment[y1:y2, x1:x2] for (x1, y1, x2, y2) in bbox_xyxy_list]
+        return cropped_masks
 
     @property
     def ROI_segmentation(self) -> List[List[SegmentResult]]:
