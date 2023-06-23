@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union, cast
 
 import cv2
 import numpy as np
@@ -49,13 +49,14 @@ class RxImageBase:
         else:
             raise TypeError(f"Image type {type(image)} not supported.")
 
-    def load_from_generator(self, generator_obj: RxImageGenerator) -> None:
+    def load_from_generator(self, generator_obj: RxImageGenerator, **kwargs: Dict[str, bool]) -> None:
         """Loads the image from the given generator object.
 
         Args:
             generator_obj (Generator): Image Generator object.
+            kwargs: Keyword arguments to be passed to the generator object.
         """
-        self._image = generator_obj.generate()
+        self._image = generator_obj.generate(**kwargs)
         self.load_ref_image(generator_obj.reference_pills[0])
 
     def load_ref_image(self, ref_image: np.ndarray) -> None:

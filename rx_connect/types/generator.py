@@ -132,7 +132,7 @@ class RxImageGenerator:
         )
 
     @timer
-    def generate(self, new_bg: bool = False, new_pill: bool = False) -> np.ndarray:
+    def generate(self, new_bg: bool = True, new_pill: bool = True) -> np.ndarray:
         """Generate a image with pills composed on a background image.
 
         Args:

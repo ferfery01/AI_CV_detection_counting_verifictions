@@ -9,6 +9,9 @@ from rx_connect.dataset_generator.object_overlay import (
     overlay_image_onto_background,
 )
 from rx_connect.dataset_generator.transform import resize_and_transform_pill
+from rx_connect.tools.logging import setup_logger
+
+logger = setup_logger()
 
 __all__: Sequence[str] = ("random_partition", "generate_image", "ImageComposition")
 
@@ -28,7 +31,8 @@ class ImageComposition(NamedTuple):
 
 
 def random_partition(number: int, num_parts: int) -> List[int]:
-    """Generates a list of random integers that add up to a specified number.
+    """Generates a list of random integers that add up to a specified number,
+    with at least one count for each part.
 
     Args:
         number (int): The number to be divided into multiple parts.
@@ -37,12 +41,24 @@ def random_partition(number: int, num_parts: int) -> List[int]:
     Returns:
         A list of num_parts random integers that add up to number.
     """
+    logger.assertion(
+        num_parts <= number, "The number of parts cannot be greater than the number to be divided"
+    )
+
+    # subtract num_parts from number to ensure at least 1 for each part
+    number -= num_parts
 
     parts: List[int] = [0] * num_parts
     for i in range(num_parts - 1):
         parts[i] = random.randint(0, number)
         number -= parts[i]
     parts[num_parts - 1] = number
+
+    # Add 1 to each part to ensure at least one count per part
+    parts = [part + 1 for part in parts]
+
+    # Sort the parts in descending order.
+    parts = sorted(parts, reverse=True)
 
     return parts
 
