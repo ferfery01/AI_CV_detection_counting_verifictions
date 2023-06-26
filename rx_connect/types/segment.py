@@ -114,23 +114,25 @@ class RxSegmentation(RxBase):
 
 if __name__ == "__main__":
     from rx_connect.types.detection import RxDetection
-    from rx_connect.types.image import RxImageBase, RxImageCountSegment
+    from rx_connect.types.image import RxImage
 
     # test example
-    test_image_path = "/Users/sxiangab/Documents/synthetic3k_simple_new/images/1_17.jpg"
-
-    # instantiate image object
-    imageObj = RxImageBase()
-    imageObj.load_image(test_image_path)
+    test_image_path = "/media/RxConnectShared/ePillID/pills/images/50090-0762_0_0.jpg"
 
     # instantiate count object
     detection_obj = RxDetection()
 
-    # instantiate objects
+    # instantiate segment object
     segmentObj = RxSegmentation()
-    countSegmentObj = RxImageCountSegment(imageObj)
+
+    # instantiate image object
+    countSegmentObj = RxImage()
+
+    # Load the image and set the counter and segmenter objects
+    countSegmentObj.load_image(test_image_path)
     countSegmentObj.set_counter(detection_obj)
     countSegmentObj.set_segmenter(segmentObj)
 
     # Full Segmentation -> results are list of [bbox, mask, score]
     results = countSegmentObj.fully_segmented_image
+    print(f"Number of masks: {len(results)}")

@@ -15,6 +15,6 @@ ROOT_DIR = PROJECT_DIR.parent
 CACHE_DIR = ROOT_DIR / ".cache/"
 """The cache directory where artifacts loaded from the remote server are stored.
 """
-SERVER_IP = "10.231.51.79"
+SERVER_IP = "172.23.72.41"
 """The remote server IP address. Default to the current AI Lab GPU server.
 """

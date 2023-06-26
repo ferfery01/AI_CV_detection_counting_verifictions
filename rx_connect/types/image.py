@@ -12,6 +12,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from rx_connect.core.types.detection import CounterModuleOutput
 from rx_connect.core.types.segment import SamHqSegmentResult, SegmentResult
 from rx_connect.core.utils.sam_utils import get_best_mask
+from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.logging import setup_logger
 from rx_connect.types.detection import RxDetection
 from rx_connect.types.generator import RxImageGenerator
@@ -33,7 +34,10 @@ class RxImageBase:
         self._image = cv2.VideoCapture(0)
 
     def load_image(self, image: Union[np.ndarray, torch.Tensor, Image.Image, str, Path]) -> None:
-        """Loads the image from the given image object.
+        """Loads the image from the given image object. The image object can be a numpy array,
+        torch tensor, PIL image, or a path to an image. The path can be a local path or a remote
+        path. If the path is remote, the image is downloaded to the cache directory. The image is
+        loaded as a numpy array.
 
         Args:
             image (Union[np.ndarray, torch.Tensor, Image]): Image as image object.
@@ -45,7 +49,8 @@ class RxImageBase:
         elif isinstance(image, Image.Image):
             self._image = np.array(image)
         elif isinstance(image, (str, Path)):
-            self._image = io.imread(image)
+            image_path = fetch_from_remote(image)
+            self._image = io.imread(image_path)
         else:
             raise TypeError(f"Image type {type(image)} not supported.")
 
@@ -87,24 +92,16 @@ class RxImageBase:
             np.ndarray: Loaded image.
         """
         logger.assertion(self._image is not None, "Image not loaded.")  # type: ignore
-        return self._image
+        return cast(np.ndarray, self._image)
 
 
 class RxImageCount(RxImageBase):
     """Image class for counting methods. This class inherits from RxImageBase for the loading methods."""
 
-    def __init__(self, inherit_image: Optional[RxImageBase] = None) -> None:
-        """
-        Constructor.
-
-        Args:
-            inherit_image (Optional[RxImageBase]): Inherited image.
-        """
+    def __init__(self) -> None:
         super().__init__()
         self._bounding_boxes: Optional[List[CounterModuleOutput]] = None
         self._counterObj: Optional[RxDetection] = None
-        if isinstance(inherit_image, RxImageBase):
-            self.__dict__.update(inherit_image.__dict__)
 
     def set_counter(self, counterObj: RxDetection) -> None:
         """Sets the counter object. Reset any existing results to None when there's a new counter.
@@ -146,11 +143,16 @@ class RxImageCount(RxImageBase):
         ]
         ts.show(show_img_reordered)
 
-    def visualize_bounding_boxes(self) -> None:
-        """Utility function to visualize bounding boxes found."""
+    def draw_bounding_boxes(self) -> np.ndarray:
+        """Utility function to draw bounding boxes on the image."""
         img_bb = self.image.copy()
         for (x1, y1, x2, y2), _ in self.bounding_boxes:
             cv2.rectangle(img_bb, (x1, y1), (x2, y2), (255, 0, 0), 1)
+        return img_bb
+
+    def visualize_bounding_boxes(self) -> None:
+        """Utility function to visualize bounding boxes found."""
+        img_bb = self.draw_bounding_boxes()
         ts.show(img_bb)
 
     @property
@@ -185,24 +187,17 @@ class RxImageCount(RxImageBase):
         return [self.image[y1:y2, x1:x2] for (x1, y1, x2, y2), _ in self.bounding_boxes]
 
 
-class RxImageCountSegment(RxImageCount):
+class RxImageSegment(RxImageCount):
     """Image class for segmentation methods. This class inherits from RxImageCount for
     the loading and counting methods.
     """
 
-    def __init__(self, inherit_image: Optional[RxImageBase] = None) -> None:
-        """Constructor.
-
-        Args:
-            inherit_image (Optional[RxImageBase]): Inherited image.
-        """
+    def __init__(self) -> None:
         super().__init__()
         self._best_seg_mask: Optional[np.ndarray] = None
         self._seg_mask_full: Optional[List[SamHqSegmentResult]] = None
         self._seg_mask_ROI: Optional[List[List[SegmentResult]]] = None
         self._segmenterObj: Optional[RxSegmentation] = None
-        if isinstance(inherit_image, RxImageBase):
-            self.__dict__.update(inherit_image.__dict__)
 
     def set_segmenter(self, segmenterObj: RxSegmentation) -> None:
         """Sets the segmenter object. Reset any existing results to None when there's a new segmenter.
@@ -286,25 +281,17 @@ class RxImageCountSegment(RxImageCount):
         return self._seg_mask_ROI
 
 
-class RxImageVerify(RxImageCountSegment):
-    """Image class for verification methods.
-    This class inherits from RxImageCountSegment for the loading, counting, and segmentation methods.
+class RxImageVerify(RxImageCount):
+    """Image class for verification methods. This class inherits from RxImageCount for the
+    loading and counting methods.
     """
 
-    def __init__(self, inherit_image: Optional[RxImageBase] = None) -> None:
-        """Constructor.
-
-        Args:
-            inherit_image (Optional[RxImageBase]): Inherited image.
-        """
+    def __init__(self) -> None:
         super().__init__()
         self._vectorized_ROIs: Optional[List[np.ndarray]] = None
         self._vectorized_ref: Optional[np.ndarray] = None
         self._similarity_scores: Optional[List[float]] = None
         self._vectorizerObj: Optional[RxVectorization] = None
-
-        if isinstance(inherit_image, RxImageBase):
-            self.__dict__.update(inherit_image.__dict__)
 
     def set_vectorizer(self, vectorizerObj: RxVectorization) -> None:
         """Sets the vectorizer object. Reset any existing results to None when there's a new vectorizer.
@@ -321,8 +308,7 @@ class RxImageVerify(RxImageCountSegment):
         self._similarity_fn = cosine_similarity
 
     def visualize_similarity_scores(self, img_per_col: int = 5) -> None:
-        """
-        Utility function to visualize similarity scores along with ROIs.
+        """Utility function to visualize similarity scores along with ROIs.
 
         Args:
             img_per_col (int): The number of images per column.
@@ -363,3 +349,12 @@ class RxImageVerify(RxImageCountSegment):
                 for vectorized_ROI in self.vectorized_ROIs
             ]
         return self._similarity_scores
+
+
+class RxImage(RxImageSegment, RxImageVerify):
+    """Image class containing all the methods required for loading pill images, detection,
+    segmentation, and verification.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
