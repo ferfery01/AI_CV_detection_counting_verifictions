@@ -11,7 +11,7 @@ logger = setup_logger()
 """NOTE: For the functions in this file to work, you need to be one a VPN and have
 password-less SSH set up. Steps:
     1. $ ssh-keygen (you can hit <enter> to the end)
-    2. $ ssh-copy-id <user_name>@10.231.51.79
+    2. $ ssh-copy-id <user_name>@172.23.72.41
 """
 
 
@@ -30,7 +30,7 @@ def fetch_from_remote(
 
     Args:
         remote_path (str, Path): Full path or relative path (to home) of the remote file/folder.
-        server_ip (str): The remote server IP address. Default to the AI Lab GPU server at 10.231.51.79.
+        server_ip (str): The remote server IP address. Default to the AI Lab GPU server at 172.23.72.41.
         cache_dir (str, Path): Path to the folder where cached files are stored.
         ignore_exist (bool): Enforce rsync checking time stamp if file/folder already exists.
         timeout (int): Timeout in seconds for the rsync command.
@@ -115,12 +115,12 @@ def push_to_remote(
     Note: requires password-less SSH. Steps:
         1. $ ssh-keygen
             (you can hit <enter> to the end)
-        2. $ ssh-copy-id <user_name>@10.231.51.79
+        2. $ ssh-copy-id <user_name>@172.23.72.41
 
     Args:
         local_path (str or Path): Full path or relative path (to current) of the local file/folder.
         remote_storage_folder (str): The remote parent folder to put the file/folder in.
-        server_ip (str): The remote server IP address. Default to the AI Lab GPU server at 10.231.51.79.
+        server_ip (str): The remote server IP address. Default to the AI Lab GPU server at 172.23.72.41.
 
     Returns:
         str: Remote file/folder name after uploading.

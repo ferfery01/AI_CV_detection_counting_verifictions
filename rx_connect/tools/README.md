@@ -11,7 +11,7 @@ In this folder, there are multiple tool functions that'll be shared among severa
 2. Send ssh public key to remote server
 
     ```
-    ssh-copy-id <user_name>@10.231.51.79
+    ssh-copy-id <user_name>@172.23.72.41
     ```
 
 Example 1 - files
