@@ -72,6 +72,7 @@ def _compose_pill_on_bg(
     max_overlap: float = 0.2,
     max_attempts: int = 10,
     start_index: int = 1,
+    enable_defective_pills: bool = False,
     enable_edge_pills: bool = False,
     **kwargs,
 ) -> ImageComposition:
@@ -85,6 +86,7 @@ def _compose_pill_on_bg(
         n_pills: The number of pills to compose.
         max_overlap: The maximum allowed overlap between pills.
         max_attempts: The maximum number of attempts to compose a pill.
+        enable_defective_pills: Whether to allow defective pills to be placed on the background image.
         enable_edge_pills: Whether to allow pills to be placed on the border of the background image.
         start_index: The starting index for the pill labels.
         **kwargs: Keyword arguments to be passed to resize_and_transform_pill.
@@ -100,7 +102,9 @@ def _compose_pill_on_bg(
 
     for _ in range(n_pills):
         # Resize and transform the pill image and mask.
-        pill_img_t, pill_mask_t = resize_and_transform_pill(pill_image, pill_mask, **kwargs)
+        pill_img_t, pill_mask_t = resize_and_transform_pill(
+            pill_image, pill_mask, allow_defects=enable_defective_pills, **kwargs
+        )
 
         # Attempt to compose the pill on the background image.
         for _ in range(max_attempts):
@@ -139,6 +143,7 @@ def generate_image(
     max_pills: int = 15,
     max_overlap: float = 0.2,
     max_attempts: int = 10,
+    enable_defective_pills: bool = False,
     enable_edge_pills: bool = False,
     **kwargs,
 ) -> ImageComposition:
@@ -152,6 +157,7 @@ def generate_image(
         max_pills: The maximum number of pills to compose.
         max_overlap: The maximum allowed overlap between pills.
         max_attempts: The maximum number of attempts to compose a pill.
+        enable_defective_pills: Whether to allow defective pills to be placed on the background image.
         enable_edge_pills: whether to allow the pill object to be on the border of
             the background image.
         **kwargs: Keyword arguments for resize_and_transform_pill.
@@ -185,6 +191,7 @@ def generate_image(
             n_pills,
             max_overlap=max_overlap,
             max_attempts=max_attempts,
+            enable_defective_pills=enable_defective_pills,
             enable_edge_pills=enable_edge_pills,
             start_index=len(label_ids),
             **kwargs,

@@ -193,7 +193,13 @@ def generate_samples(
     help="Maximum dimension of the background image",
 )
 @click.option(
-    "-e",
+    "-ed",
+    "--enable-defective-pills",
+    is_flag=True,
+    help="Allow defective pills to be placed on the background image",
+)
+@click.option(
+    "-ep",
     "--enable-edge-pills",
     is_flag=True,
     help="Allow pills to be placed on the edge of the background image",
@@ -218,6 +224,7 @@ def main(
     max_attempts: int,
     min_bg_dim: int,
     max_bg_dim: int,
+    enable_defective_pills: bool,
     enable_edge_pills: bool,
     num_cpu: int,
 ):
@@ -234,6 +241,7 @@ def main(
         "max_pills": max_pills,
         "max_overlap": max_overlap,
         "max_attempts": max_attempts,
+        "enable_defective_pills": enable_defective_pills,
         "enable_edge_pills": enable_edge_pills,
     }
     Parallel(n_jobs=num_cpu)(

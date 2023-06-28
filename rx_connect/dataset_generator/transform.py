@@ -43,6 +43,7 @@ def resize_and_transform_pill(
     mask: np.ndarray,
     longest_min: int = 224,
     longest_max: int = 224,
+    allow_defects: bool = False,
     augmentations: Optional[A.BasicTransform] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Resize the pill image and the corresponding mask to the given height and width.
@@ -53,6 +54,7 @@ def resize_and_transform_pill(
         mask: binary mask of the pill image.
         longest_min: minimum size of the longest side of the resized image.
         longest_max: maximum size of the longest side of the resized image.
+        allow_defects: whether to allow defects in the pill image.
         augmentations: augmentations to apply to the pill image.
 
     Returns:
@@ -85,6 +87,20 @@ def resize_and_transform_pill(
             ),
         ]
     )
+
+    # Add random crop to the augmentations if defects are allowed.
+    if allow_defects:
+        # Randomly select the fraction of the image to crop. The fraction is selected
+        # from the range [80, 100) percent.
+        fraction = 0.01 * np.random.randint(80, 100)
+
+        # Apply random crop augmentation 25% of the time
+        augmentations = A.Compose(
+            [
+                augmentations,
+                A.RandomCrop(p=0.25, height=int(fraction * h_new), width=int(fraction * w_new)),
+            ]
+        )
 
     # Apply the augmentations to the image.
     transforms_aug = augmentations(image=img_t, mask=mask_t)
