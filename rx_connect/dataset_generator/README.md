@@ -18,18 +18,23 @@ One can create a synthetic dataset by running the following command:
 ```
 dataset_generator
 ```
-The generated dataset will be stored in the `./data/synthetic` directory, with the following structure dependeing on the mode (detection or segmentation):
+The generated dataset will be stored in the `./data/synthetic` directory, with the following structure dependeing on the mode (detection, segmentation, or both):
 ```
 data/
     └── synthetic/
-        └── detection (or segmentation)/
+        └── both/
             ├── images/
-            ├── labels (or comp_masks)/
+            ├── labels/
+            ├── comp_masks/
             └── pill_info.csv
 ```
 
-The `images` folder holds the synthetic images of pills composed on various backgrounds. This `image` folder can be a local directory or a remote directory. By default, it uses the images and masks stored on the remote GPU server at `RxConnectShared/ePillID/pills/`. The number of pills in each image is embedded in the filename. For instance, a file named `0_18.jpg` signifies that there are `18` pills in the image.
+The `images` folder holds the synthetic images of pills composed on various backgrounds. This `image` folder can be a local directory or a remote directory. By default, it uses the images and masks stored on the remote GPU server at `RxConnectShared/ePillID/pills/`.
 
 For the `detection` mode, a `labels` folder is created. This folder contains bounding box annotations for each generated image in the YOLO format. These annotations serve as valuable assets for training and evaluating object detection models, especially designed for counting and detecting pills. Additionally, the `pill_info.csv` file is generated which contains the mapping of composed image file name to reference pill image path. This can be used during the downstream task to get the reference pill used in the composed image.
 
 In the `segmentation` mode, a `comp_mask` folder is generated. This folder contains the instance segmentation mask for each synthesized image, which can be utilized for training and evaluating instance segmentation models, particularly aimed at segmenting pills from the background.
+
+In the `both` mode, both `labels` and `comp_mask` folders are generated.
+
+**NOTE:** All images, labels, and comp masks names are generated using a unique identifier.

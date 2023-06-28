@@ -68,7 +68,6 @@ def _compose_pill_on_bg(
     comp_mask: np.ndarray,
     pill_image: np.ndarray,
     pill_mask: np.ndarray,
-    mode: str,
     n_pills: int,
     max_overlap: float = 0.2,
     max_attempts: int = 10,
@@ -84,7 +83,6 @@ def _compose_pill_on_bg(
         pill_image: The pill image.
         pill_mask: The pill mask.
         n_pills: The number of pills to compose.
-        mode: The composition mode. Can be either "detection" or "segmentation".
         max_overlap: The maximum allowed overlap between pills.
         max_attempts: The maximum number of attempts to compose a pill.
         enable_edge_pills: Whether to allow pills to be placed on the border of the background image.
@@ -126,14 +124,7 @@ def _compose_pill_on_bg(
             bg_image, comp_mask = overlay_image_onto_background(
                 bg_image, comp_mask, pill_img_t, pill_mask_t, top_left, start_index + count
             )
-
-            # Update the label ids depending on the composition mode.
-            if mode == "detection":  # all pills labeled as 1
-                label_ids.append(1)
-            elif mode == "segmentation":  # each pill label as it's own index
-                label_ids.append(start_index + count)
-            else:
-                raise ValueError(f"Invalid mode {mode}. Must be either 'detection' or 'segmentation'.")
+            label_ids.append(start_index + count)
             count += 1
             break
 
@@ -144,7 +135,6 @@ def generate_image(
     bg_image: np.ndarray,
     pill_images: List[np.ndarray],
     pill_masks: List[np.ndarray],
-    mode: str = "detection",
     min_pills: int = 5,
     max_pills: int = 15,
     max_overlap: float = 0.2,
@@ -158,7 +148,6 @@ def generate_image(
         bg_image: The background image.
         pill_images: A list of pill images.
         pill_masks: A list of pill masks.
-        mode: Detection data generation or segmentation data generation mode flag.
         min_pills: The minimum number of pills to compose.
         max_pills: The maximum number of pills to compose.
         max_overlap: The maximum allowed overlap between pills.
@@ -193,7 +182,6 @@ def generate_image(
             comp_mask,
             pill_images[idx],
             pill_masks[idx],
-            mode,
             n_pills,
             max_overlap=max_overlap,
             max_attempts=max_attempts,

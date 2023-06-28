@@ -1,6 +1,7 @@
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+from uuid import uuid4
 
 import click
 import cv2
@@ -24,22 +25,35 @@ _YOLO_LABELS = "labels"
 _SEGMENTATION_LABELS = "comp_masks"
 
 
-def create_folders(output_path: Path, mode: str) -> Tuple[Path, Path]:
+def create_folders(output_path: Path, mode: str) -> Tuple[Path, List[Path]]:
     """Create the output folder and subfolders depending on the mode.
 
     Args:
         output_path (Union[str, Path]): The path to the output folder.
-        mode (str): The mode of the dataset generation. Can be either "detection" or "segmentation".
+        mode (str): The mode of the dataset generation. Can be either "detection", "segmentation",
+            or "both".
+
+    Returns:
+        A tuple containing the path to the images folder and a list of paths to the labels folders.
     """
     output_path.mkdir(parents=True, exist_ok=True)
 
     img_path = output_path / mode / "images"
     img_path.mkdir(parents=True, exist_ok=True)
 
-    label_path = output_path / mode / f"{_YOLO_LABELS if mode == 'detection' else _SEGMENTATION_LABELS}"
-    label_path.mkdir(parents=True, exist_ok=True)
+    detection_label_path = output_path / mode / _YOLO_LABELS
+    segmentation_label_path = output_path / mode / _SEGMENTATION_LABELS
 
-    return img_path, label_path
+    label_paths = []
+    if mode in ("both", "detection"):
+        label_paths.append(detection_label_path)
+    if mode in ("both", "segmentation"):
+        label_paths.append(segmentation_label_path)
+
+    for label_path in label_paths:
+        label_path.mkdir(parents=True, exist_ok=True)
+
+    return img_path, label_paths
 
 
 def generate_samples(
@@ -50,7 +64,6 @@ def generate_samples(
     min_bg_dim: int,
     max_bg_dim: int,
     num_pills_type: int,
-    idx: int,
     mode: str,
     **kwargs,
 ) -> None:
@@ -63,31 +76,29 @@ def generate_samples(
     pill_images, pill_masks = load_pills_and_masks(sampled_images_path, sampled_masks_path, thresh=25)
 
     # Third, generate the composed image (i.e. pills on background)
-    img_comp, mask_comp, labels_comp = generate_image(bg_image, pill_images, pill_masks, mode, **kwargs)
+    img_comp, mask_comp, labels_comp = generate_image(bg_image, pill_images, pill_masks, **kwargs)
     img_comp = cv2.cvtColor(img_comp, cv2.COLOR_RGB2BGR)
 
-    if mode == "detection":
-        # Save YOLO annotations
+    # Generate a unique ID for the image
+    _id = uuid4()
+
+    # Save the composed image
+    cv2.imwrite(f"{output_folder}/{mode}/images/{_id}.jpg", img_comp)
+
+    # Save YOLO annotations
+    if mode in ("both", "detection"):
         anno_yolo = create_yolo_annotations(mask_comp, labels_comp)
-        n_pills: int = len(anno_yolo)
-        with (output_folder / mode / _YOLO_LABELS / f"{idx}_{n_pills}.txt").open("w") as f:
+        with (output_folder / mode / _YOLO_LABELS / f"{_id}.txt").open("w") as f:
             for j in range(len(anno_yolo)):
                 f.write(" ".join(str(el) for el in anno_yolo[j]) + "\n")
 
-        # Save composed image
-        cv2.imwrite(f"{output_folder}/{mode}/images/{idx}_{n_pills}.jpg", img_comp)
-
         # Save mapping between composed image and sampled pill paths
         with (output_folder / mode / "pill_info.csv").open("a") as f:
-            f.write(f"{idx}_{n_pills}.jpg: {', '.join(str(path) for path in sampled_images_path)}\n")
-    elif mode == "segmentation":
-        n_pills = len(labels_comp)
+            f.write(f"{_id}.jpg: {', '.join(str(path) for path in sampled_images_path)}\n")
 
-        # Save instance segmentation masks along with the composed image
-        cv2.imwrite(str(output_folder / mode / "images" / f"{idx}_{n_pills}.jpg"), img_comp)
-        cv2.imwrite(str(output_folder / mode / _SEGMENTATION_LABELS / f"{idx}_{n_pills}.jpg"), mask_comp)
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
+    # Save instance segmentation masks
+    if mode in ("both", "segmentation"):
+        cv2.imwrite(f"{output_folder}/{mode}/{_SEGMENTATION_LABELS}/{_id}.jpg", mask_comp)
 
 
 @click.command()
@@ -128,9 +139,9 @@ def generate_samples(
     "-m",
     "--mode",
     default="detection",
-    type=click.Choice(["detection", "segmentation"]),
+    type=click.Choice(["detection", "segmentation", "both"]),
     show_default=True,
-    help="Flag for detection or segmentation dataset generation",
+    help="Flag to indicate whether to generate detection, segmentation, or both types of annotations.",
 )
 @click.option(
     "-np",
@@ -234,18 +245,22 @@ def main(
             min_bg_dim,
             max_bg_dim,
             n_pill_types,
-            idx,
             mode,
             **kwargs,
         )
-        for idx in trange(n_images, desc="Generating images")
+        for _ in trange(n_images, desc="Generating images")
     )
 
     # Log output folder path
-    if mode == "detection":
-        logger.info(f"Annotations are saved to the folder: {label_path}")
-    elif mode == "segmentation":
-        logger.info(f"Instance segmentation masks are saved to the folder: {label_path}")
+    msgs = []
+    if mode in ("both", "detection"):
+        msgs.append(f"Annotations are saved to the folder: {label_path[0]}")
+    if mode == "segmentation":
+        msgs.append(f"Instance segmentation masks are saved to the folder: {label_path[0]}")
+    elif mode == "both":
+        msgs.append(f"Instance segmentation masks are saved to the folder: {label_path[1]}")
+
+    logger.info("\n".join(msgs))
     logger.info(f"Images are saved to the folder: {img_path}")
 
 
