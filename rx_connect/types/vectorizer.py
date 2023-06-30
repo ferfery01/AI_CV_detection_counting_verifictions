@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar, List, Union, cast
+from typing import Any, ClassVar, List, Optional, Union, cast
 
 import cv2
 import numpy as np
@@ -17,7 +17,7 @@ logger = setup_logger()
 
 
 class RxVectorizer(ABC):
-    def __init__(self, model_path: Union[str, Path]) -> None:
+    def __init__(self, model_path: Optional[Union[str, Path]] = None) -> None:
         """Initializes the RxVectorizer object.
 
         Args:
@@ -27,9 +27,11 @@ class RxVectorizer(ABC):
             AssertionError: If the model path does not exist.
         """
         # If remote model path is provided, fetch the model from the remote
-        self._model_path = fetch_from_remote(model_path, cache_dir=CACHE_DIR / "verification")
-        logger.assertion(self._model_path.exists(), f"Model path {self._model_path} does not exist.")
-        self._load_model()
+
+        if model_path is not None:
+            self._model_path = fetch_from_remote(model_path, cache_dir=CACHE_DIR / "verification")
+            logger.assertion(self._model_path.exists(), f"Model path {self._model_path} does not exist.")
+            self._load_model()
 
     def __call__(self, image: np.ndarray) -> np.ndarray:
         """Inference call."""
@@ -105,3 +107,30 @@ class RxVectorizerSift(RxVectorizer):
         The output vector will be a 2D array with shape (1, num_clusters * 128).
         """
         return self._model.transform([descriptor])
+
+
+class RxVectorizerColorhist(RxVectorizer):
+    def _load_model(self) -> None:
+        pass
+
+    def _preprocess(self, image: np.ndarray) -> np.ndarray:
+        return image
+
+    def _predict(self, image: np.ndarray) -> np.ndarray:
+        """Encodes the image using the colorhist technique."""
+
+        # Compute image vector
+        # image pixel values array
+        # which channels do you (all RGB channels here)
+        # how many descriptors do you want per channel?
+        # what is the range of values per color channel?
+        hist = cv2.calcHist(
+            [image],
+            [0, 1, 2],
+            None,  # mask, not used in this
+            [256, 256, 256],
+            [0, 256, 0, 256, 0, 256],
+        )
+        final_vector = cv2.normalize(hist, hist).flatten()
+
+        return [final_vector]

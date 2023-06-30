@@ -17,7 +17,7 @@ from rx_connect.tools.logging import setup_logger
 from rx_connect.types.detection import RxDetection
 from rx_connect.types.generator import RxImageGenerator
 from rx_connect.types.segment import RxSegmentation
-from rx_connect.types.verification import RxVectorization
+from rx_connect.types.vectorizer import RxVectorizer
 
 logger = setup_logger()
 
@@ -291,9 +291,9 @@ class RxImageVerify(RxImageCount):
         self._vectorized_ROIs: Optional[List[np.ndarray]] = None
         self._vectorized_ref: Optional[np.ndarray] = None
         self._similarity_scores: Optional[List[float]] = None
-        self._vectorizerObj: Optional[RxVectorization] = None
+        self._vectorizerObj: Optional[RxVectorizer] = None
 
-    def set_vectorizer(self, vectorizerObj: RxVectorization) -> None:
+    def set_vectorizer(self, vectorizerObj: RxVectorizer) -> None:
         """Sets the vectorizer object. Reset any existing results to None when there's a new vectorizer.
 
         Args:
@@ -325,7 +325,7 @@ class RxImageVerify(RxImageCount):
         """
         if self._vectorized_ref is None:
             logger.assertion(self._vectorizerObj is not None, "Vectorizer object not set.")
-            self._vectorized_ref = cast(RxVectorization, self._vectorizerObj).encode(self.ref_image)
+            self._vectorized_ref = cast(RxVectorizer, self._vectorizerObj).encode(self.ref_image)
         return self._vectorized_ref
 
     @property
@@ -337,7 +337,7 @@ class RxImageVerify(RxImageCount):
         """
         if self._vectorized_ROIs is None:
             logger.assertion(self._vectorizerObj is not None, "Vectorizer object not set.")
-            self._vectorized_ROIs = cast(RxVectorization, self._vectorizerObj).encode(self.ROIs)
+            self._vectorized_ROIs = cast(RxVectorizer, self._vectorizerObj).encode(self.ROIs)
         return self._vectorized_ROIs
 
     @property
