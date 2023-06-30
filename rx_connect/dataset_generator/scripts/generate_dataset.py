@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import click
 import cv2
+import numpy as np
 from joblib import Parallel, delayed
 from tqdm import trange
 
@@ -12,6 +13,8 @@ from rx_connect import SHARED_EPILL_DATA_DIR
 from rx_connect.dataset_generator.annotations import create_yolo_annotations
 from rx_connect.dataset_generator.composition import generate_image
 from rx_connect.dataset_generator.io_utils import (
+    SEGMENTATION_LABELS,
+    YOLO_LABELS,
     get_background_image,
     load_pill_mask_paths,
     load_pills_and_masks,
@@ -21,9 +24,6 @@ from rx_connect.dataset_generator.transform import apply_augmentations
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
-
-_YOLO_LABELS = "labels"
-_SEGMENTATION_LABELS = "comp_masks"
 
 
 def create_folders(output_path: Path, mode: str) -> Tuple[Path, List[Path]]:
@@ -42,8 +42,8 @@ def create_folders(output_path: Path, mode: str) -> Tuple[Path, List[Path]]:
     img_path = output_path / mode / "images"
     img_path.mkdir(parents=True, exist_ok=True)
 
-    detection_label_path = output_path / mode / _YOLO_LABELS
-    segmentation_label_path = output_path / mode / _SEGMENTATION_LABELS
+    detection_label_path = output_path / mode / YOLO_LABELS
+    segmentation_label_path = output_path / mode / SEGMENTATION_LABELS
 
     label_paths = []
     if mode in ("both", "detection"):
@@ -96,7 +96,7 @@ def generate_samples(
     # Save YOLO annotations
     if mode in ("both", "detection"):
         anno_yolo = create_yolo_annotations(mask_comp, labels_comp)
-        with (output_folder / mode / _YOLO_LABELS / f"{_id}.txt").open("w") as f:
+        with (output_folder / mode / YOLO_LABELS / f"{_id}.txt").open("w") as f:
             for j in range(len(anno_yolo)):
                 f.write(" ".join(str(el) for el in anno_yolo[j]) + "\n")
 
@@ -106,7 +106,7 @@ def generate_samples(
 
     # Save instance segmentation masks
     if mode in ("both", "segmentation"):
-        cv2.imwrite(f"{output_folder}/{mode}/{_SEGMENTATION_LABELS}/{_id}.jpg", mask_comp)
+        np.save(f"{output_folder}/{mode}/{SEGMENTATION_LABELS}/{_id}.npy", mask_comp)
 
 
 @click.command()

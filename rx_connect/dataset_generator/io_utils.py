@@ -17,6 +17,10 @@ from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
 
+YOLO_LABELS = "labels"
+SEGMENTATION_LABELS = "comp_masks"
+COCO_LABELS = "COCO_txt"
+
 
 COLOR_TRANSFORM = A.RandomBrightnessContrast()
 """The color transformation to apply to the pill image and mask.
@@ -105,6 +109,35 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
     logger.info(f"Found {len(imgs_path)} pill images and masks.")
 
     return PillMaskPaths(imgs_path, masks_path)
+
+
+def load_comp_mask_paths(data_dir: Union[str, Path]) -> List[Path]:
+    """Load all the masks path.
+
+    Args:
+        data_dir: The directory containing all the pill images and the corresponding
+            masks. The directory should have two subdirectories: "images" and "masks".
+            It can be a local directory or a remote directory on AI Lab GPU servers.
+
+    Returns:
+        pill_mask_paths: The paths to the pill image and mask.
+    """
+    data_dir = Path(data_dir)
+
+    if is_remote_dir(data_dir):
+        masks_path = fetch_file_paths_from_remote_dir(data_dir / SEGMENTATION_LABELS)
+    else:
+        masks_path = list((data_dir / SEGMENTATION_LABELS).glob("*.npy"))
+
+    # Sort the file paths to ensure that the images and masks are aligned
+    masks_path = sorted(masks_path)
+
+    if len(masks_path) == 0:
+        raise FileNotFoundError(f"Could not find any masks in {data_dir}/{SEGMENTATION_LABELS}.")
+
+    logger.info(f"Found {len(masks_path)} masks.")
+
+    return masks_path
 
 
 def load_image_and_mask(
