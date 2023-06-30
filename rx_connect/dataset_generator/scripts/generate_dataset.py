@@ -17,6 +17,7 @@ from rx_connect.dataset_generator.io_utils import (
     load_pills_and_masks,
     random_sample_pills,
 )
+from rx_connect.dataset_generator.transform import apply_augmentations
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
@@ -65,6 +66,8 @@ def generate_samples(
     max_bg_dim: int,
     num_pills_type: int,
     mode: str,
+    apply_color: bool,
+    apply_noise: bool,
     **kwargs,
 ) -> None:
     """Generate and save a single sample along with its annotation."""
@@ -73,10 +76,15 @@ def generate_samples(
 
     # Second, get the pill images and masks to compose on the background
     sampled_images_path, sampled_masks_path = random_sample_pills(images_path, masks_path, num_pills_type)
-    pill_images, pill_masks = load_pills_and_masks(sampled_images_path, sampled_masks_path, thresh=25)
+    pill_images, pill_masks = load_pills_and_masks(
+        sampled_images_path, sampled_masks_path, thresh=25, color_aug=True
+    )
 
     # Third, generate the composed image (i.e. pills on background)
     img_comp, mask_comp, labels_comp = generate_image(bg_image, pill_images, pill_masks, **kwargs)
+
+    # Last, apply augmentations and save the image and its annotations
+    img_comp = apply_augmentations(img_comp, apply_color=apply_color, apply_noise=apply_noise)
     img_comp = cv2.cvtColor(img_comp, cv2.COLOR_RGB2BGR)
 
     # Generate a unique ID for the image
@@ -193,6 +201,24 @@ def generate_samples(
     help="Maximum dimension of the background image",
 )
 @click.option(
+    "-ac/-dac",
+    "--apply-color/--dont-apply-color",
+    default=True,
+    type=bool,
+    show_default=True,
+    help="""Apply color augmentations to the composed image. This is useful fot simulating
+    different lighting conditions.""",
+)
+@click.option(
+    "-an/-dan",
+    "--apply-noise/--dont-apply-noise",
+    default=True,
+    type=bool,
+    show_default=True,
+    help="""Apply noise augmentations to the composed image. This is useful for simulating
+    different camera conditions.""",
+)
+@click.option(
     "-ed",
     "--enable-defective-pills",
     is_flag=True,
@@ -224,6 +250,8 @@ def main(
     max_attempts: int,
     min_bg_dim: int,
     max_bg_dim: int,
+    apply_color: bool,
+    apply_noise: bool,
     enable_defective_pills: bool,
     enable_edge_pills: bool,
     num_cpu: int,
@@ -254,6 +282,8 @@ def main(
             max_bg_dim,
             n_pill_types,
             mode,
+            apply_color,
+            apply_noise,
             **kwargs,
         )
         for _ in trange(n_images, desc="Generating images")

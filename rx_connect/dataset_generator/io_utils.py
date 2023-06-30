@@ -2,6 +2,7 @@ import random
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
+import albumentations as A
 import numpy as np
 from skimage import io
 
@@ -15,6 +16,11 @@ from rx_connect.tools.data_tools import (
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
+
+
+COLOR_TRANSFORM = A.RandomBrightnessContrast()
+"""The color transformation to apply to the pill image and mask.
+"""
 
 
 class PillMaskPaths(NamedTuple):
@@ -167,7 +173,7 @@ def random_sample_pills(
 
 
 def load_pills_and_masks(
-    images_path: Sequence[Path], masks_path: Sequence[Path], *, thresh: int = 25
+    images_path: Sequence[Path], masks_path: Sequence[Path], *, thresh: int = 25, color_aug: bool = False
 ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """Load all the pill images and the corresponding masks provided in the paths.
 
@@ -175,6 +181,7 @@ def load_pills_and_masks(
         images_path: The paths to the pill images. Can be local paths or remote paths.
         masks_path: The paths to the pill masks. Can be local paths or remote paths.
         thresh: The threshold at which to binarize the mask.
+        color_aug: Whether to apply color augmentations.
 
     Returns:
         pill_images: The pill images.
@@ -190,6 +197,12 @@ def load_pills_and_masks(
 
     for img_path, mask_path in zip(images_path, masks_path):
         pill_img, pill_mask = load_image_and_mask(img_path, mask_path, thresh=thresh)
+
+        # Apply color augmentations, if `color_aug` is True.
+        if color_aug:
+            transform_aug = COLOR_TRANSFORM(image=pill_img)
+            pill_img = transform_aug["image"]
+
         pill_images.append(pill_img)
         pill_masks.append(pill_mask)
 

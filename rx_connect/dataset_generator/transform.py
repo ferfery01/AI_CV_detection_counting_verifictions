@@ -3,6 +3,29 @@ from typing import Optional, Tuple
 import albumentations as A
 import numpy as np
 
+COLOR_TRANSFORMS = [
+    A.CLAHE(),
+    A.RandomBrightnessContrast(),
+    A.RandomGamma(),
+    A.MultiplicativeNoise(multiplier=(0.8, 1.2)),
+    A.RandomToneCurve(scale=0.2),
+]
+"""Albumentations composition of color transforms."""
+
+NOISE_TRANSFORMS = [
+    A.AdvancedBlur(),
+    A.MedianBlur(),
+    A.ZoomBlur(max_factor=1.1),
+    A.GaussNoise(),
+    A.ImageCompression(quality_lower=50),
+    A.ISONoise(),
+    A.PixelDropout(dropout_prob=0.05),
+    A.Emboss(alpha=(0.8, 1.0), strength=(0.7, 1.0)),
+    A.Sharpen(),
+    A.Spatter(mode=["rain", "mud"]),
+]
+"""Albumentations composition of noise transforms."""
+
 
 def resize_bg(img: np.ndarray, desired_max: int = 1920, desired_min: Optional[int] = None) -> np.ndarray:
     """Resize the background image to the given height and width. Some images might
@@ -107,3 +130,23 @@ def resize_and_transform_pill(
     img_t, mask_t = transforms_aug["image"], transforms_aug["mask"]
 
     return img_t, mask_t
+
+
+def apply_augmentations(image: np.ndarray, apply_color: bool = True, apply_noise: bool = True) -> np.ndarray:
+    """Apply random color and/or noise augmentations to the image.
+
+    The augmentations are applied with a 50% probability. If `apply_color` and `apply_noise`
+    are both False, the original image is returned. If only one of them is True, only the
+    corresponding augmentations are applied. If both are True, both augmentations are applied after one
+    another. Only one augmentations from each group is applied at a time.
+    """
+    transforms = []
+    if apply_color:
+        transforms.append(A.OneOf(COLOR_TRANSFORMS))
+    if apply_noise:
+        transforms.append(A.OneOf(NOISE_TRANSFORMS))
+
+    if len(transforms) > 0:
+        return A.Compose(transforms)(image=image)["image"]
+    else:
+        return image
