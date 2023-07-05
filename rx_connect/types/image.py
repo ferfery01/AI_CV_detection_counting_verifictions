@@ -61,7 +61,7 @@ class RxImageBase:
             generator_obj (Generator): Image Generator object.
             kwargs: Keyword arguments to be passed to the generator object.
         """
-        self._image = generator_obj.generate(**kwargs)
+        self._image, *_ = generator_obj.generate(**kwargs)
         self.load_ref_image(generator_obj.reference_pills[0])
 
     def load_ref_image(self, ref_image: np.ndarray) -> None:

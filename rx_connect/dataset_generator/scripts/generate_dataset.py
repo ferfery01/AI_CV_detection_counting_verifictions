@@ -1,6 +1,6 @@
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 from uuid import uuid4
 
 import click
@@ -11,17 +11,9 @@ from tqdm import trange
 
 from rx_connect import SHARED_EPILL_DATA_DIR
 from rx_connect.dataset_generator.annotations import create_yolo_annotations
-from rx_connect.dataset_generator.composition import generate_image
-from rx_connect.dataset_generator.io_utils import (
-    SEGMENTATION_LABELS,
-    YOLO_LABELS,
-    get_background_image,
-    load_pill_mask_paths,
-    load_pills_and_masks,
-    random_sample_pills,
-)
-from rx_connect.dataset_generator.transform import apply_augmentations
+from rx_connect.dataset_generator.io_utils import SEGMENTATION_LABELS, YOLO_LABELS
 from rx_connect.tools.logging import setup_logger
+from rx_connect.types.generator import RxImageGenerator
 
 logger = setup_logger()
 
@@ -57,34 +49,10 @@ def create_folders(output_path: Path, mode: str) -> Tuple[Path, List[Path]]:
     return img_path, label_paths
 
 
-def generate_samples(
-    bg_img_path: Optional[Union[str, Path]],
-    images_path: List[Path],
-    masks_path: List[Path],
-    output_folder: Path,
-    min_bg_dim: int,
-    max_bg_dim: int,
-    num_pills_type: int,
-    mode: str,
-    apply_color: bool,
-    apply_noise: bool,
-    **kwargs,
-) -> None:
+def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str) -> None:
     """Generate and save a single sample along with its annotation."""
-    # First, generate a background image
-    bg_image = get_background_image(bg_img_path, min_bg_dim, max_bg_dim)
-
-    # Second, get the pill images and masks to compose on the background
-    sampled_images_path, sampled_masks_path = random_sample_pills(images_path, masks_path, num_pills_type)
-    pill_images, pill_masks = load_pills_and_masks(
-        sampled_images_path, sampled_masks_path, thresh=25, color_aug=True
-    )
-
-    # Third, generate the composed image (i.e. pills on background)
-    img_comp, mask_comp, labels_comp = generate_image(bg_image, pill_images, pill_masks, **kwargs)
-
-    # Last, apply augmentations and save the image and its annotations
-    img_comp = apply_augmentations(img_comp, apply_color=apply_color, apply_noise=apply_noise)
+    # Generate the synthetic image along with its annotation
+    img_comp, mask_comp, labels_comp = generator()
     img_comp = cv2.cvtColor(img_comp, cv2.COLOR_RGB2BGR)
 
     # Generate a unique ID for the image
@@ -102,7 +70,7 @@ def generate_samples(
 
         # Save mapping between composed image and sampled pill paths
         with (output_folder / mode / "pill_info.csv").open("a") as f:
-            f.write(f"{_id}.jpg: {', '.join(str(path) for path in sampled_images_path)}\n")
+            f.write(f"{_id}.jpg: {', '.join(str(path) for path in generator.sampled_images_path)}\n")
 
     # Save instance segmentation masks
     if mode in ("both", "segmentation"):
@@ -201,6 +169,16 @@ def generate_samples(
     help="Maximum dimension of the background image",
 )
 @click.option(
+    "-ct",
+    "--color-tint",
+    default=5,
+    type=click.IntRange(0, 20),
+    help="""Controls the aggressiveness of the color tint applied to the background.
+    The higher the value, the more aggressive the color tint. The value
+    should be between 0 and 20. Only used if --bg-image-path is not provided.
+    """,
+)
+@click.option(
     "-ac/-dac",
     "--apply-color/--dont-apply-color",
     default=True,
@@ -250,42 +228,36 @@ def main(
     max_attempts: int,
     min_bg_dim: int,
     max_bg_dim: int,
+    color_tint: int,
     apply_color: bool,
     apply_noise: bool,
     enable_defective_pills: bool,
     enable_edge_pills: bool,
     num_cpu: int,
 ):
-    # Load pill mask paths
-    images_path, masks_path = load_pill_mask_paths(pill_mask_path)
-
     # Create output folders
     output_path = Path(output_folder)
     img_path, label_path = create_folders(output_path, mode)
 
+    # Initialize Generator object
+    generator_obj = RxImageGenerator(
+        images_dir=pill_mask_path,
+        bg_dir=bg_image_path,
+        image_size=(min_bg_dim, max_bg_dim),
+        num_pills=(min_pills, max_pills),
+        num_pills_type=n_pill_types,
+        max_overlap=max_overlap,
+        max_attempts=max_attempts,
+        color_tint=color_tint,
+        apply_color=apply_color,
+        apply_noise=apply_noise,
+        enable_defective_pills=enable_defective_pills,
+        enable_edge_pills=enable_edge_pills,
+    )
+
     # Generate images and annotations and save them
-    kwargs: Dict[str, Any] = {
-        "min_pills": min_pills,
-        "max_pills": max_pills,
-        "max_overlap": max_overlap,
-        "max_attempts": max_attempts,
-        "enable_defective_pills": enable_defective_pills,
-        "enable_edge_pills": enable_edge_pills,
-    }
     Parallel(n_jobs=num_cpu)(
-        delayed(generate_samples)(
-            bg_image_path,
-            images_path,
-            masks_path,
-            output_path,
-            min_bg_dim,
-            max_bg_dim,
-            n_pill_types,
-            mode,
-            apply_color,
-            apply_noise,
-            **kwargs,
-        )
+        delayed(generate_samples)(generator_obj, output_path, mode)
         for _ in trange(n_images, desc="Generating images")
     )
 

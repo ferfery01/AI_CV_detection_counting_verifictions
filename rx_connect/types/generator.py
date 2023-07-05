@@ -2,17 +2,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
-import albumentations as A
 import numpy as np
 
 from rx_connect import SHARED_EPILL_DATA_DIR
-from rx_connect.dataset_generator.composition import generate_image
+from rx_connect.dataset_generator.composition import ImageComposition, generate_image
 from rx_connect.dataset_generator.io_utils import (
     PillMaskPaths,
     get_background_image,
     load_pill_mask_paths,
-    load_random_pills_and_masks,
+    load_pills_and_masks,
+    random_sample_pills,
 )
+from rx_connect.dataset_generator.transform import apply_augmentations
 from rx_connect.tools.timers import timer
 
 
@@ -27,7 +28,6 @@ class RxImageGenerator:
     ├── masks
           ├── 0001.jpg
           ├── ...
-
     """
 
     images_dir: Union[str, Path] = SHARED_EPILL_DATA_DIR
@@ -59,10 +59,21 @@ class RxImageGenerator:
     color_tint: int = 0
     """Controls the aggressiveness of the color tint applied to the background.
     The higher the value, the more aggressive the color tint. The value
-    should be between 0 and 10. Only used if `bg_dir` is None.
+    should be between 0 and 20. Only used if `bg_dir` is None.
     """
-    noise_var: Tuple[int, int] = (0, 100)
-    """Controls the variance of the gaussian noise applied to the image.
+    apply_color: bool = True
+    """Whether to apply color augmentations to the generated images. This is useful
+    for generating images with different lighting conditions.
+    """
+    apply_noise: bool = True
+    """Whether to apply noise augmentations to the generated images. This is useful
+    for simulating images taken with different camera conditions.
+    """
+    enable_defective_pills: bool = False
+    """Whether to allow defective pills to be generated.
+    """
+    enable_edge_pills: bool = False
+    """Whether to allow pills to be placed at the edge of the image.
     """
     _bg_dir: Path = field(init=False, repr=False)
     """Placeholder for the background directory
@@ -87,11 +98,6 @@ class RxImageGenerator:
     """
 
     def __post_init__(self) -> None:
-        # Init some class attributes
-        self.transform_fn = A.transforms.GaussNoise(
-            var_limit=self.noise_var, always_apply=True, per_channel=True
-        )
-
         # Load the pill images and the associated mask paths.
         self._pill_mask_paths = load_pill_mask_paths(self.images_dir)
 
@@ -100,6 +106,11 @@ class RxImageGenerator:
 
         # Load the pill images and masks
         self.config_pills()
+
+    @property
+    def sampled_images_path(self) -> List[Path]:
+        """Return the sampled pill images paths."""
+        return self._sampled_pills_path
 
     @property
     def reference_pills(self) -> List[np.ndarray]:
@@ -125,15 +136,15 @@ class RxImageGenerator:
 
     def config_pills(self) -> None:
         """Configure the pill images and masks."""
-        self._pill_images, self._pill_masks = load_random_pills_and_masks(
-            *self._pill_mask_paths,
-            pill_types=self.num_pills_type,
-            thresh=self.thresh,
+        self._sampled_pills_path, sampled_masks_path = random_sample_pills(
+            *self._pill_mask_paths, self.num_pills_type
+        )
+        self._pill_images, self._pill_masks = load_pills_and_masks(
+            self._sampled_pills_path, sampled_masks_path, thresh=self.thresh, color_aug=True
         )
 
-    @timer
-    def generate(self, new_bg: bool = True, new_pill: bool = True) -> np.ndarray:
-        """Generate a image with pills composed on a background image.
+    def __call__(self, new_bg: bool = True, new_pill: bool = True) -> ImageComposition:
+        """Generate synthetic images along with the masks and labels.
 
         Args:
             new_bg: If True, new background image is loaded. Otherwise, the loaded background
@@ -142,7 +153,7 @@ class RxImageGenerator:
                 images and masks are used.
 
         Returns:
-            The generated synthetic image.
+            ImageComposition: The generated image, mask, and labels.
         """
         if new_bg:
             self.config_background(self.bg_dir)
@@ -150,7 +161,7 @@ class RxImageGenerator:
         if new_pill:
             self.config_pills()
 
-        img_comp, *_ = generate_image(
+        img_comp, mask_comp, labels_comp = generate_image(
             self._bg_image,
             self._pill_images,
             self._pill_masks,
@@ -158,7 +169,16 @@ class RxImageGenerator:
             max_pills=self.num_pills[1],
             max_overlap=self.max_overlap,
             max_attempts=self.max_attempts,
-            enable_edge_pills=False,
+            enable_defective_pills=self.enable_defective_pills,
+            enable_edge_pills=self.enable_edge_pills,
         )
 
-        return self.transform_fn(image=img_comp)["image"]
+        # Apply color and/or noise augmentations
+        img_comp = apply_augmentations(img_comp, apply_color=self.apply_color, apply_noise=self.apply_noise)
+
+        return ImageComposition(img_comp, mask_comp, labels_comp)
+
+    @timer
+    def generate(self, new_bg: bool = True, new_pill: bool = True) -> ImageComposition:
+        """This is an alias for __call__."""
+        return self(new_bg, new_pill)

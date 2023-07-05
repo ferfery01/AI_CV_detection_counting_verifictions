@@ -22,16 +22,11 @@ SEGMENTATION_LABELS = "comp_masks"
 COCO_LABELS = "COCO_txt"
 
 
-COLOR_TRANSFORM = A.RandomBrightnessContrast()
-"""The color transformation to apply to the pill image and mask.
-"""
-
-
 class PillMaskPaths(NamedTuple):
     """The paths to the pill image and mask."""
 
-    imgs_path: Sequence[Path]
-    masks_path: Sequence[Path]
+    imgs_path: List[Path]
+    masks_path: List[Path]
 
 
 class PillMask(NamedTuple):
@@ -206,7 +201,7 @@ def random_sample_pills(
 
 
 def load_pills_and_masks(
-    images_path: Sequence[Path], masks_path: Sequence[Path], *, thresh: int = 25, color_aug: bool = False
+    images_path: Sequence[Path], masks_path: Sequence[Path], *, thresh: int = 25, color_aug: bool = True
 ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """Load all the pill images and the corresponding masks provided in the paths.
 
@@ -233,8 +228,7 @@ def load_pills_and_masks(
 
         # Apply color augmentations, if `color_aug` is True.
         if color_aug:
-            transform_aug = COLOR_TRANSFORM(image=pill_img)
-            pill_img = transform_aug["image"]
+            pill_img = A.RandomBrightnessContrast()(image=pill_img)["image"]
 
         pill_images.append(pill_img)
         pill_masks.append(pill_mask)
@@ -296,7 +290,7 @@ def load_bg_image(path: Path, min_dim: int = 1024, max_dim: int = 1920) -> np.nd
     return bg_img
 
 
-def generate_random_bg(height: int, width: int, color_tint: int = 10) -> np.ndarray:
+def generate_random_bg(height: int, width: int, color_tint: int = 5) -> np.ndarray:
     """Generate a random background image.
 
     Args:
@@ -304,12 +298,12 @@ def generate_random_bg(height: int, width: int, color_tint: int = 10) -> np.ndar
         width (int): width of the background image.
         color_tint (int): Controls the aggressiveness of the color tint applied to the
             background. The higher the value, the more aggressive the color tint. The value
-            should be between 0 and 10.
+            should be between 0 and 20.
 
     Returns:
         np.ndarray: random background image.
     """
-    assert 0 <= color_tint <= 10, "color_tint should be between 0 and 10."
+    assert 0 <= color_tint <= 20, "color_tint should be between 0 and 20."
 
     # Generate a random color for the background
     background_color = np.random.randint(max(0, 200 - color_tint * 10), 256, size=(3,)).tolist()
