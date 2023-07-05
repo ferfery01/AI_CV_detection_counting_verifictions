@@ -10,9 +10,10 @@ from super_gradients.training.dataloaders.dataloaders import (
 def create_dataloaders(
     data_dir: str,
     classes: List[str],
+    input_dim: List[int],
     batch_size: int = 16,
     num_workers: int = 4,
-) -> Tuple[Dataloaders, Dataloaders, Dataloaders]:
+) -> Tuple[Dataloaders, Dataloaders]:
     """Loads the dataset and returns the train, val, and test dataloaders."""
     dataloader_params: Dict[str, int] = {"batch_size": batch_size, "num_workers": num_workers}
     train_data = coco_detection_yolo_format_train(
@@ -21,6 +22,7 @@ def create_dataloaders(
             "images_dir": "train/images",
             "labels_dir": "train/labels",
             "classes": classes,
+            "input_dim": input_dim,
         },
         dataloader_params=dataloader_params,
     )
@@ -31,18 +33,9 @@ def create_dataloaders(
             "images_dir": "val/images",
             "labels_dir": "val/labels",
             "classes": classes,
+            "input_dim": input_dim,
         },
         dataloader_params=dataloader_params,
     )
 
-    test_data = coco_detection_yolo_format_val(
-        dataset_params={
-            "data_dir": data_dir,
-            "images_dir": "test/images",
-            "labels_dir": "test/labels",
-            "classes": classes,
-        },
-        dataloader_params=dataloader_params,
-    )
-
-    return train_data, val_data, test_data
+    return train_data, val_data

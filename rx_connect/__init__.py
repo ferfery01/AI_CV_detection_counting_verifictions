@@ -12,7 +12,10 @@ PROJECT_DIR = Path(__file__).parent
 ROOT_DIR = PROJECT_DIR.parent
 """The root directory.
 """
-CACHE_DIR = ROOT_DIR / ".cache/"
+CKPT_DIR = ROOT_DIR / "checkpoints"
+"""The checkpoint directory.
+"""
+CACHE_DIR = ROOT_DIR / ".cache"
 """The cache directory where artifacts loaded from the remote server are stored.
 """
 SERVER_IP = "172.23.72.41"
