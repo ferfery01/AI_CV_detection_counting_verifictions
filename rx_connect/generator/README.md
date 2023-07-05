@@ -2,24 +2,29 @@
 
 Dataset Generator is a Python-based tool to generate synthetic datasets for counting and detecting pills. This repository creates synthetic images by adding pills to background images (e.g., a plate) to help develop and test machine learning models for pill counting and pill segmentation tasks.
 
-
 ## Usage
+
 ### Generate Masks
 
 To use Dataset Generator, you will first need to generate masks for all the pill images. This can be done by running the following command:
-```
+
+```shell script
 mask_generator
 ```
+
 There are two distinct methodologies for creating these masks: using a Deep Neural Network (DNN) or employing traditional Computer Vision (CV) algorithms. To use the DNN, the `--use-sam` flag needs to be passed to the `mask_generator`. This invokes the SAM-HQ mask to generate segmentation masks of the pills. Although using DNN yields higher quality masks, it requires more computational time. Hence, it is advisable to use a GPU server for this process. The mask for each pill image will be saved in the `./data/masks` directory.
 
 ### Generate Synthetic Dataset
 
 One can create a synthetic dataset by running the following command:
-```
+
+```shell script
 dataset_generator
 ```
+
 The generated dataset will be stored in the `./data/synthetic` directory, with the following structure dependeing on the mode (detection, segmentation, or both):
-```
+
+```shell script
 data/
     └── synthetic/
         └── both/

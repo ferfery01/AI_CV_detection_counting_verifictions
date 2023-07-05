@@ -3,12 +3,12 @@ from typing import List, NamedTuple, Sequence
 
 import numpy as np
 
-from rx_connect.dataset_generator.object_overlay import (
+from rx_connect.generator.object_overlay import (
     check_overlap,
     is_pill_within_background,
     overlay_image_onto_background,
 )
-from rx_connect.dataset_generator.transform import resize_and_transform_pill
+from rx_connect.generator.transform import resize_and_transform_pill
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()

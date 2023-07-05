@@ -8,7 +8,7 @@ import numpy as np
 from joblib import Parallel, delayed
 
 from rx_connect import ROOT_DIR
-from rx_connect.dataset_generator.io_utils import COCO_LABELS, load_comp_mask_paths
+from rx_connect.generator.io_utils import COCO_LABELS, load_comp_mask_paths
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()

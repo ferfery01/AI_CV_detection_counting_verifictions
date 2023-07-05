@@ -7,7 +7,7 @@ import numpy as np
 from skimage import io
 
 from rx_connect import CACHE_DIR
-from rx_connect.dataset_generator.transform import resize_bg
+from rx_connect.generator.transform import resize_bg
 from rx_connect.tools import is_remote_dir
 from rx_connect.tools.data_tools import (
     fetch_file_paths_from_remote_dir,

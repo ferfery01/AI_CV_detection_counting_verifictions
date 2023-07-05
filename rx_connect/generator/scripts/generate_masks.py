@@ -13,12 +13,12 @@ from rx_connect.core.utils.image_utils import (
     create_square_grid,
     unpack_images_from_grid,
 )
-from rx_connect.dataset_generator.grabcut_utils import (
+from rx_connect.generator.grabcut_utils import (
     apply_grabcut,
     create_initial_mask_for_grabcut,
     post_process_mask,
 )
-from rx_connect.dataset_generator.io_utils import get_unmasked_image_paths
+from rx_connect.generator.io_utils import get_unmasked_image_paths
 
 _PAD_WIDTH = 15
 """The number of pixels to pad the images on each side when creating a grid of images.
@@ -44,7 +44,7 @@ def generate_final_mask(
     if use_sam:
         # Import here to avoid loading the model if not needed. Otherwise, it will be loaded
         # even if the user is not using the SAM model.
-        from rx_connect.dataset_generator.sam_utils import get_mask_from_SAM
+        from rx_connect.generator.sam_utils import get_mask_from_SAM
 
         # Put the images in a grid and get the combined mask from the SAM model
         images_in_grid = create_square_grid(images, grids, pad_width=_PAD_WIDTH)

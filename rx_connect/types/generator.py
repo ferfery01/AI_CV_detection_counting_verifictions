@@ -5,15 +5,15 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 
 from rx_connect import SHARED_EPILL_DATA_DIR
-from rx_connect.dataset_generator.composition import ImageComposition, generate_image
-from rx_connect.dataset_generator.io_utils import (
+from rx_connect.generator.composition import ImageComposition, generate_image
+from rx_connect.generator.io_utils import (
     PillMaskPaths,
     get_background_image,
     load_pill_mask_paths,
     load_pills_and_masks,
     random_sample_pills,
 )
-from rx_connect.dataset_generator.transform import apply_augmentations
+from rx_connect.generator.transform import apply_augmentations
 from rx_connect.tools.timers import timer
 
 
