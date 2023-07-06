@@ -10,6 +10,7 @@ pr:
 # be used throughout the pipeline.
 variables:
     pythonVersion: 3.10
+    condaCacheDir: /usr/share/miniconda/envs
     pipDownloadDir: $(Pipeline.Workspace)/.pip
 
 # This section is used to define the stages of the pipeline. Each stage
@@ -18,13 +19,38 @@ jobs:
     - job: rx_connect_install_and_test
       displayName: RxConnect-Install and Test
       pool:
-          vmImage: ubuntu-latest
-      container:
-          image: continuumio/miniconda3:23.3.1-0
+          vmImage: ubuntu-22.04
       steps:
           - checkout: self
+
+          # On hosted agents, conda is left out of PATH by default to keep its Python version
+          # from conflicting with other installed versions. The task.prependpath agent command
+          # will make it available to all subsequent steps.
+          - bash: echo "##vso[task.prependpath]$CONDA/bin"
+            displayName: Add conda to PATH
+
+          # Change the ownership of the condaCacheDir directory to the current user.
           - bash: |
+                sudo chown -R $(whoami):$(id -ng) $(condaCacheDir)
+            displayName: Fix condaCacheDir directory permissions
+
+          - task: Cache@2
+            inputs:
+                key: conda | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | setup.cfg
+                restoreKeys: |
+                    python | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt
+                    python | "$(Agent.OS)" | "$(pythonVersion)"
+                    python | "$(Agent.OS)"
+                path: $(pipDownloadDir)
+            displayName: Cache pip packages
+
+          - script: conda create --yes --quiet --name myenv python=$(pythonVersion)
+            displayName: Create Conda Environment
+
+          - bash: |
+                source activate myenv
                 export PATH=$PATH:/home/vsts_azpcontainer/.local/bin
+
                 PROJECT="rx_connect"
                 BLACK="true"
                 MYPY="true"
@@ -51,7 +77,7 @@ jobs:
                   V=$(get_tool_version "black")
                   echo "**************************************************"
                   echo "black: ${V} - checking formatting"
-                  pip install --disable-pip-version-check -q black=="${V}"
+                  pip install --disable-pip-version-check --cache-dir $(pipDownloadDir) --quiet black=="${V}"
                   echo "**************************************************"
                   black --config "${CONF_BLACK}" . || true
                   ERROR_BLACK="$(git diff --name-only | wc -l)"
@@ -63,7 +89,7 @@ jobs:
                   V=$(get_tool_version "isort")
                   echo "**************************************************"
                   echo "isort: ${V} - checking import ordering"
-                  pip install --disable-pip-version-check -q isort=="${V}"
+                  pip install --disable-pip-version-check --cache-dir $(pipDownloadDir) --quiet isort=="${V}"
                   echo "**************************************************"
                   # Using global .isort.cfg in root directory
                   isort --check-only --profile black --filter-files --settings-path "${CONF_ISORT}" . 2> isort.txt || true
@@ -76,7 +102,7 @@ jobs:
                    V=$(get_tool_version "flake8")
                   echo "**************************************************"
                   echo "flake8: ${V} - linting"
-                  pip install --disable-pip-version-check -q flake8=="${V}"
+                  pip install --disable-pip-version-check --cache-dir $(pipDownloadDir) --quiet flake8=="${V}"
                   echo "**************************************************"
                   # Using global flake8 config in root directory
                   flake8 --config "${CONF_FLAKE}" . --output-file flake8.txt || true
@@ -89,12 +115,12 @@ jobs:
                   V=$(get_tool_version "mypy")
                   echo "**************************************************"
                   echo "mypy: ${V} - type checking"
-                  pip install --disable-pip-version-check -q mypy=="${V}"
+                  pip install --disable-pip-version-check --cache-dir $(pipDownloadDir) --quiet mypy=="${V}"
                   echo "**************************************************"
 
                   echo "Installing all the stub packages for mypy..."
                   while IFS= read -r line; do
-                      pip install "$line"
+                      pip install --cache-dir $(pipDownloadDir) --quiet "$line"
                   done < <(grep "types" $REQS)
 
                   # run static type checking, record all output & ensure that mypy doesn't return a non-zero exit code
@@ -138,35 +164,26 @@ jobs:
                 fi
             displayName: Run python linters
 
-          - bash: mkdir -p $(pipDownloadDir)
-            displayName: Create pip cache directory
-
-          - task: Cache@2
-            inputs:
-                key: pip | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | setup.cfg
-                restoreKeys: |
-                    pip | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | setup.cfg
-                    pip | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt
-                    pip | "$(Agent.OS)" | "$(pythonVersion)"
-                    pip | "$(Agent.OS)"
-                path: $(pipDownloadDir)
-            displayName: Cache pip packages
-
           - bash: |
-                # Create a new virtual environment
-                echo "***************************************************"
-                echo "* Creating and activating a new conda environment *"
-                echo "***************************************************"
-                conda create --name myenv python=$(pythonVersion) --quiet -y
                 source activate myenv
-
                 echo "**************************************************"
                 echo "******** Installing required dependencies ********"
                 echo "**************************************************"
-                pip install -r requirements.txt
+                pip install --cache-dir $(pipDownloadDir) -r requirements.txt
+            displayName: Install dependencies
 
+          - bash: |
+                source activate myenv
                 echo "**************************************************"
                 echo "**** Installing project and dev dependencies *****"
                 echo "**************************************************"
-                pip install -e ".[dev]"
-            displayName: Install dependencies and project
+                pip install --cache-dir $(pipDownloadDir) -e ".[dev]"
+            displayName: Install project and dev dependencies
+
+          - bash: |
+                echo "**************************************************"
+                echo "*************** Running unit tests ***************"
+                echo "**************************************************"
+                source activate myenv
+                python -c "import pandas; print(pandas.__version__)"
+            displayName: Run unit tests
