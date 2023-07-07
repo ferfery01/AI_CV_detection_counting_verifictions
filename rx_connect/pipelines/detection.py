@@ -5,20 +5,19 @@ import numpy as np
 from super_gradients.training import models as yolo_model
 from super_gradients.training.models.predictions import DetectionPrediction
 
-from rx_connect import CACHE_DIR
+from rx_connect import CACHE_DIR, PIPELINES_DIR
 from rx_connect.core.types.detection import CounterModuleOutput
+from rx_connect.pipelines.base import RxBase
 from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import load_yaml
 from rx_connect.tools.timers import timer
-from rx_connect.types import TYPES_DIR
-from rx_connect.types.base import RxBase
 
 logger = setup_logger()
 
 
 class RxDetection(RxBase):
-    def __init__(self, cfg: Union[str, Path] = f"{TYPES_DIR}/configs/Dev/counter_config.yml") -> None:
+    def __init__(self, cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/counter_config.yml") -> None:
         super().__init__(cfg)
 
     def _load_cfg(self) -> None:
@@ -76,7 +75,7 @@ class RxDetection(RxBase):
 
 if __name__ == "__main__":
     from rx_connect import SHARED_EPILL_DATA_DIR
-    from rx_connect.types.image import RxImage
+    from rx_connect.pipelines.image import RxImage
 
     img_path = f"{SHARED_EPILL_DATA_DIR}/images/68258-6044_0_1.jpg"
 

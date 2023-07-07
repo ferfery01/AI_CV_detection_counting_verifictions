@@ -12,12 +12,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 from rx_connect.core.types.detection import CounterModuleOutput
 from rx_connect.core.types.segment import SamHqSegmentResult, SegmentResult
 from rx_connect.core.utils.sam_utils import get_best_mask
+from rx_connect.pipelines.detection import RxDetection
+from rx_connect.pipelines.generator import RxImageGenerator
+from rx_connect.pipelines.segment import RxSegmentation
+from rx_connect.pipelines.vectorizer import RxVectorizer
 from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.logging import setup_logger
-from rx_connect.types.detection import RxDetection
-from rx_connect.types.generator import RxImageGenerator
-from rx_connect.types.segment import RxSegmentation
-from rx_connect.types.vectorizer import RxVectorizer
 
 logger = setup_logger()
 
@@ -31,7 +31,7 @@ class RxImageBase:
 
     def load_from_camera(self) -> None:
         """Loads the image from default camera."""
-        self._image = cv2.VideoCapture(0)
+        _, self._image = cv2.VideoCapture(0).read()
 
     def load_image(self, image: Union[np.ndarray, torch.Tensor, Image.Image, str, Path]) -> None:
         """Loads the image from the given image object. The image object can be a numpy array,

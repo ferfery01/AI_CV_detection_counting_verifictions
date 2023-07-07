@@ -12,8 +12,8 @@ from tqdm import trange
 from rx_connect import SHARED_EPILL_DATA_DIR
 from rx_connect.generator.annotations import create_yolo_annotations
 from rx_connect.generator.io_utils import SEGMENTATION_LABELS, YOLO_LABELS
+from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.tools.logging import setup_logger
-from rx_connect.types.generator import RxImageGenerator
 
 logger = setup_logger()
 

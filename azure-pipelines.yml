@@ -49,6 +49,22 @@ jobs:
 
           - bash: |
                 source activate myenv
+                echo "**************************************************"
+                echo "******** Installing required dependencies ********"
+                echo "**************************************************"
+                pip install --cache-dir $(pipDownloadDir) -r requirements.txt
+            displayName: Install dependencies
+
+          - bash: |
+                source activate myenv
+                echo "**************************************************"
+                echo "**** Installing project and dev dependencies *****"
+                echo "**************************************************"
+                pip install --cache-dir $(pipDownloadDir) -e ".[dev]"
+            displayName: Install project and dev dependencies
+
+          - bash: |
+                source activate myenv
                 export PATH=$PATH:/home/vsts_azpcontainer/.local/bin
 
                 PROJECT="rx_connect"
@@ -57,7 +73,7 @@ jobs:
                 FLAKE="true"
                 ISORT="true"
 
-                REQS="$(pwd)/setup.cfg"
+                DEPS="$(pwd)/setup.cfg"
                 CONF_BLACK="$(pwd)/.black.toml"
                 CONF_ISORT="$(pwd)/.isort.cfg"
                 CONF_FLAKE="$(pwd)/.flake8"
@@ -70,7 +86,7 @@ jobs:
                 echo "-------------------------------------"
 
                 pushd "${PROJECT}/"
-                get_tool_version()  { echo $(grep $1 $REQS | awk -F "==" '{print $2}'); }
+                get_tool_version()  { echo $(grep $1 $DEPS | awk -F "==" '{print $2}'); }
 
                 ERROR_BLACK="0"
                 if [[ "${BLACK}" == "true" ]]; then
@@ -92,7 +108,7 @@ jobs:
                   pip install --disable-pip-version-check --cache-dir $(pipDownloadDir) --quiet isort=="${V}"
                   echo "**************************************************"
                   # Using global .isort.cfg in root directory
-                  isort --check-only --profile black --filter-files --settings-path "${CONF_ISORT}" . 2> isort.txt || true
+                  isort --check-only --profile black --filter-files --settings-path "${CONF_ISORT}" . > isort.txt || true
                   cat isort.txt
                   ERROR_ISORT="$(cat isort.txt | wc -l)"
                 fi
@@ -118,19 +134,9 @@ jobs:
                   pip install --disable-pip-version-check --cache-dir $(pipDownloadDir) --quiet mypy=="${V}"
                   echo "**************************************************"
 
-                  echo "Installing all the stub packages for mypy..."
-                  while IFS= read -r line; do
-                      pip install --cache-dir $(pipDownloadDir) --quiet "$line"
-                  done < <(grep "types" $REQS)
-
                   # run static type checking, record all output & ensure that mypy doesn't return a non-zero exit code
-                  mypy --ignore-missing-imports --follow-imports=silent --show-column-numbers --no-error-summary --namespace-packages --explicit-package-bases $(find . -type f -name "*.py") 2> mypy.log || true
+                  mypy --ignore-missing-imports --follow-imports=silent --show-column-numbers --no-error-summary --namespace-packages --explicit-package-bases $(find . -type f -name "*.py") > mypy.log || true
                   cat mypy.log
-                  ERROR_MYPY="$(cat mypy.log | grep 'error:' | wc -l)"
-
-                  # because we build the project to make the code available, this can lead to
-                  # mypy checking the same code twice because it's been duplicated to build/lib/...
-                  cat mypy.log | grep -v '^build/lib/' > __mypy.log && mv __mypy.log mypy.log
 
                   set +e
                   ERROR_MYPY="$(cat mypy.log | grep 'error:' | wc -l)"
@@ -163,22 +169,6 @@ jobs:
                   exit 0
                 fi
             displayName: Run python linters
-
-          - bash: |
-                source activate myenv
-                echo "**************************************************"
-                echo "******** Installing required dependencies ********"
-                echo "**************************************************"
-                pip install --cache-dir $(pipDownloadDir) -r requirements.txt
-            displayName: Install dependencies
-
-          - bash: |
-                source activate myenv
-                echo "**************************************************"
-                echo "**** Installing project and dev dependencies *****"
-                echo "**************************************************"
-                pip install --cache-dir $(pipDownloadDir) -e ".[dev]"
-            displayName: Install project and dev dependencies
 
           - bash: |
                 echo "**************************************************"

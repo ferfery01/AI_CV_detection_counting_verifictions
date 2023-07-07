@@ -159,7 +159,7 @@ def load_image_and_mask(
     # Load the pill mask
     logger.assertion(
         Path(mask_path).exists(),
-        f"Could not find mask for image {image_path.name}. Did you run `mask_generator`?",
+        f"Could not find mask for image {image_path}. Did you run `mask_generator`?",
     )
     mask = io.imread(mask_path, as_gray=True)
 

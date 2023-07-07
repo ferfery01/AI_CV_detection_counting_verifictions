@@ -83,7 +83,7 @@ class RxVectorizerSift(RxVectorizer):
         """Loads the VLAD model from the given path."""
         self._model = cast(VLAD, read_pickle(self._model_path))
         self._model.verbose = False
-        self._SIFT = cv2.SIFT_create(self.num_features)
+        self._SIFT = cv2.SIFT_create(self.num_features)  # type: ignore
 
     def _preprocess(self, image: np.ndarray) -> np.ndarray:
         """Extracts the image descriptors using SIFT. The histogram of the colored image is
@@ -133,4 +133,4 @@ class RxVectorizerColorhist(RxVectorizer):
         )
         final_vector = cv2.normalize(hist, hist).flatten()
 
-        return [final_vector]
+        return final_vector

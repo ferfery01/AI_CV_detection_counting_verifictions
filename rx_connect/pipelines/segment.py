@@ -6,15 +6,14 @@ import torch
 from huggingface_hub import hf_hub_download
 from segment_anything import SamAutomaticMaskGenerator, build_sam
 
-from rx_connect import CACHE_DIR
+from rx_connect import CACHE_DIR, PIPELINES_DIR
 from rx_connect.core.types.segment import SamHqSegmentResult, SegmentResult
+from rx_connect.pipelines.base import RxBase
 from rx_connect.tools.data_tools import fetch_from_remote
 from rx_connect.tools.device import get_best_available_device
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import load_yaml
 from rx_connect.tools.timers import timer
-from rx_connect.types import TYPES_DIR
-from rx_connect.types.base import RxBase
 
 logger = setup_logger()
 
@@ -22,7 +21,7 @@ logger = setup_logger()
 class RxSegmentation(RxBase):
     """Object wrapping segmentation model predictions."""
 
-    def __init__(self, cfg: Union[str, Path] = f"{TYPES_DIR}/configs/Dev/segment_config.yml") -> None:
+    def __init__(self, cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/segment_config.yml") -> None:
         super().__init__(cfg)
 
     def _load_cfg(self) -> None:
@@ -113,8 +112,8 @@ class RxSegmentation(RxBase):
 
 
 if __name__ == "__main__":
-    from rx_connect.types.detection import RxDetection
-    from rx_connect.types.image import RxImage
+    from rx_connect.pipelines.detection import RxDetection
+    from rx_connect.pipelines.image import RxImage
 
     # test example
     test_image_path = "/media/RxConnectShared/ePillID/pills/images/50090-0762_0_0.jpg"

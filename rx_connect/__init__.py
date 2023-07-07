@@ -15,6 +15,9 @@ ROOT_DIR = PROJECT_DIR.parent
 CKPT_DIR = ROOT_DIR / "checkpoints"
 """The checkpoint directory.
 """
+PIPELINES_DIR = PROJECT_DIR / "pipelines"
+"""The pipelines directory.
+"""
 CACHE_DIR = ROOT_DIR / ".cache"
 """The cache directory where artifacts loaded from the remote server are stored.
 """
