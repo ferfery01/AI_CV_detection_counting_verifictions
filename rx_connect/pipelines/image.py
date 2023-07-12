@@ -10,7 +10,7 @@ from skimage import io
 from sklearn.metrics.pairwise import cosine_similarity
 
 from rx_connect.core.types.detection import CounterModuleOutput
-from rx_connect.core.types.segment import SamHqSegmentResult, SegmentResult
+from rx_connect.core.types.segment import SegmentResult
 from rx_connect.core.utils.sam_utils import get_best_mask
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.generator import RxImageGenerator
@@ -194,10 +194,10 @@ class RxImageSegment(RxImageCount):
 
     def __init__(self) -> None:
         super().__init__()
-        self._best_seg_mask: Optional[np.ndarray] = None
-        self._seg_mask_full: Optional[List[SamHqSegmentResult]] = None
-        self._seg_mask_ROI: Optional[List[List[SegmentResult]]] = None
         self._segmenterObj: Optional[RxSegmentation] = None
+        self._background_mask: Optional[np.ndarray] = None
+        self._masked_ROIs: Optional[List[np.ndarray]] = None
+        self._detail_ROI_seg: Optional[List[List[SegmentResult]]] = None
 
     def set_segmenter(self, segmenterObj: RxSegmentation) -> None:
         """Sets the segmenter object. Reset any existing results to None when there's a new segmenter.
@@ -206,22 +206,22 @@ class RxImageSegment(RxImageCount):
             segmenterObj (Segmenter): Segmenter object.
         """
         self._segmenterObj = segmenterObj
-        self._best_seg_mask = None
-        self._seg_mask_full = None
-        self._seg_mask_ROI = None
+        self._background_mask = None
+        self._masked_ROIs = None
+        self._detail_ROI_seg = None
 
     def visualize_background(self) -> None:
         """Visualize the background segment."""
         ts.show([self.image, self.background_segment])
 
-    def visualize_cropped_segmentation(self, img_per_row: int = 5) -> None:
+    def visualize_masked_ROIs(self, img_per_row: int = 5) -> None:
         """
         Visualize the cropped segmentations.
 
         Args:
             img_per_row (int): The number of images per row.
         """
-        show_imgs = self.cropped_segment
+        show_imgs = self.masked_ROIs
         show_img_reordered = [
             show_imgs[i * img_per_row : i * img_per_row + img_per_row]
             for i in range(-(len(show_imgs) // -img_per_row))
@@ -229,42 +229,49 @@ class RxImageSegment(RxImageCount):
         ts.show(show_img_reordered)
 
     @property
-    def fully_segmented_image(self) -> List[SamHqSegmentResult]:
-        """Check if the full segmentation has been produced. If not, segment before returning it.
-
-        Returns:
-            List[SamHqSegmentResult]: List of segmentation results.
-        """
-        if self._seg_mask_full is None:
-            logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
-            self._seg_mask_full = cast(RxSegmentation, self._segmenterObj).segment_full(self.image)
-        return self._seg_mask_full
-
-    @property
     def background_segment(self) -> np.ndarray:
         """
-        From the segmentation results (self.fully_segmented_image), choose the one containing all pills.
+        Run full segmentation with SAM to separate forground/background.
+        From the segmentation results, choose the one containing all pills.
 
         Returns:
             np.ndarray: The mask that separates the background and all the pills.
         """
-        if self._best_seg_mask is None:
-            self._best_seg_mask = get_best_mask(self.fully_segmented_image)
-        return self._best_seg_mask
+        if self._background_mask is None:
+            logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
+            seg_mask_full = cast(RxSegmentation, self._segmenterObj).segment_full(self.image)
+            self._background_mask = get_best_mask(seg_mask_full).astype(np.uint8)
+        return self._background_mask
 
     @property
-    def cropped_segment(self) -> List[np.ndarray]:
+    def cropped_masks(self) -> List[np.ndarray]:
         """
         Return the cropped mask from the full background mask.
+        # TODO: Replace the background (result of SAM) with instance segmentation.
 
         Returns:
-            Tuple:
-                List[np.ndarray]: The cropped masks from the full background mask
+            List[np.ndarray]: The cropped masks from the full background mask
         """
 
         bbox_xyxy_list = [item.bbox for item in self.bounding_boxes]
         cropped_masks = [self.background_segment[y1:y2, x1:x2] for (x1, y1, x2, y2) in bbox_xyxy_list]
         return cropped_masks
+
+    @property
+    def masked_ROIs(self) -> List[np.ndarray]:
+        """
+        Return the masked ROIs.
+
+        Returns:
+            List[np.ndarray]: The ROIs with background removed.
+        """
+
+        if self._masked_ROIs is None:
+            self._masked_ROIs = cast(
+                List[np.ndarray],
+                [cv2.bitwise_or(ROI, ROI, mask=mask) for ROI, mask in zip(self.ROIs, self.cropped_masks)],
+            )
+        return self._masked_ROIs
 
     @property
     def ROI_segmentation(self) -> List[List[SegmentResult]]:
@@ -273,15 +280,15 @@ class RxImageSegment(RxImageCount):
         Returns:
             List[List[SegmentResult]]: Segmentation results for each ROI.
         """
-        if self._seg_mask_ROI is None:
+        if self._detail_ROI_seg is None:
             logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
-            self._seg_mask_ROI = [
+            self._detail_ROI_seg = [
                 cast(RxSegmentation, self._segmenterObj).segment_ROI(ROI) for ROI in self.ROIs
             ]
-        return self._seg_mask_ROI
+        return self._detail_ROI_seg
 
 
-class RxImageVerify(RxImageCount):
+class RxImageVerify(RxImageSegment):
     """Image class for verification methods. This class inherits from RxImageCount for the
     loading and counting methods.
     """
@@ -337,21 +344,20 @@ class RxImageVerify(RxImageCount):
         """
         if self._vectorized_ROIs is None:
             logger.assertion(self._vectorizerObj is not None, "Vectorizer object not set.")
-            self._vectorized_ROIs = cast(RxVectorizer, self._vectorizerObj).encode(self.ROIs)
+            self._vectorized_ROIs = cast(RxVectorizer, self._vectorizerObj).encode(self.masked_ROIs)
         return self._vectorized_ROIs
 
     @property
     def similarity_scores(self) -> List[float]:
         """Returns the similarity for all the ROIs."""
         if self._similarity_scores is None:
-            self._similarity_scores = [
-                float(self._similarity_fn(self.vectorized_ref, vectorized_ROI).squeeze())
-                for vectorized_ROI in self.vectorized_ROIs
-            ]
+            self._similarity_scores = self._similarity_fn(
+                [self.vectorized_ref], self.vectorized_ROIs
+            ).squeeze()
         return self._similarity_scores
 
 
-class RxImage(RxImageSegment, RxImageVerify):
+class RxImage(RxImageVerify):
     """Image class containing all the methods required for loading pill images, detection,
     segmentation, and verification.
     """

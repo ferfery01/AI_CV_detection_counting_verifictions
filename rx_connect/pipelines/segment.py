@@ -132,6 +132,8 @@ if __name__ == "__main__":
     countSegmentObj.set_counter(detection_obj)
     countSegmentObj.set_segmenter(segmentObj)
 
-    # Full Segmentation -> results are list of [bbox, mask, score]
-    results = countSegmentObj.fully_segmented_image
-    print(f"Number of masks: {len(results)}")
+    # Current segmentation with SAM separates forground/background
+    results = countSegmentObj.background_segment
+    logger.assertion(
+        results.shape == countSegmentObj.image.shape[:2], "Output mask shape mismatches the input shape."
+    )
