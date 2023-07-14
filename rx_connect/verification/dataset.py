@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import albumentations as A
 import lightning as L
@@ -11,8 +11,12 @@ from skimage import io
 from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import DataLoader, Dataset
 
-from rx_connect.core.types.dataset import ePillIDDataset
-from rx_connect.pill_validation.augments import RefConsTransform
+from rx_connect.core.types.verification.dataset import ePillIDDataset
+from rx_connect.tools.logging import setup_logger
+from rx_connect.tools.serialization import read_pickle, write_pickle
+from rx_connect.verification.augments import RefConsTransform
+
+logger = setup_logger()
 
 
 class SingleImagePillID(Dataset):
@@ -200,3 +204,20 @@ class PillIDDataModule(L.LightningDataModule):
             pin_memory_device=self.pin_memory_device,
         )
         return [test_dl, ref_dl]
+
+
+def load_label_encoder(path: Union[str, Path], encoder_path: Union[str, Path]) -> LabelEncoder:
+    """Create a label encoder from a dataframe or load a saved encoder. If the encoder
+    is saved, load it. If not, create a new one and save it.
+    """
+    if Path(encoder_path).exists():
+        label_encoder = read_pickle(encoder_path)
+    else:
+        df = pd.read_csv(path)
+        label_encoder = LabelEncoder()
+        label_encoder.fit(df.label)
+        write_pickle(label_encoder, encoder_path)
+
+    logger.info(f"Number of classes: {len(label_encoder.classes_)}")
+
+    return label_encoder
