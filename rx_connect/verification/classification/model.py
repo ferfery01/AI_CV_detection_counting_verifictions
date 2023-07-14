@@ -35,10 +35,10 @@ class EmbeddingModel(nn.Module):
                 (
                     "emb",
                     nn.Sequential(
-                        nn.Linear(emb_size, middle),
+                        nn.Linear(emb_size, middle, bias=False),
                         nn.BatchNorm1d(middle, affine=True),
-                        nn.ReLU(inplace=True),
-                        nn.Linear(middle, emb_size),
+                        nn.ReLU(),
+                        nn.Linear(middle, emb_size, bias=False),
                         nn.Tanh(),
                     ),
                 )
@@ -54,21 +54,37 @@ class EmbeddingModel(nn.Module):
         return self.forward(x)
 
 
-def l2_norm(x: torch.Tensor) -> torch.Tensor:
-    """L2-normalize the input tensor."""
-    return F.normalize(x, p=2, dim=1)
+class ScaledLogitClassifier(nn.Module):
+    """The ScaledLogitClassifier is a PyTorch nn.Module designed to serve as the final
+    classification layer of a model. It is engineered for diverse classification tasks.
 
+    Inheriting functionalities from PyTorch's nn.Module, this class leverages a fully
+    connected linear layer (nn.Linear) for the classification task. The input features are
+    first normalized using L2 normalization and then scaled. The scaling factor, which can be
+    tuned as a hyperparameter, assists in the convergence of the softmax loss function
+    by controlling the magnitude of the logits prior to softmax operation, as described
+    in the paper https://arxiv.org/abs/1704.06369.
 
-class BinaryHead(nn.Module):
-    def __init__(self, num_class: int, emb_size: int, scale: int) -> None:
+    Attributes:
+        n_classes (int): Specifies the number of classes in the classification task.
+        emb_size (int): Denotes the dimensionality of the input feature vector.
+        scale (int): A tunable scaling factor applied to output logits to control their magnitude.
+        fc (nn.Linear): A fully connected layer responsible for classification.
+
+    Methods:
+        forward(features: torch.Tensor) -> torch.Tensor:
+            Accepts a tensor representing features, normalizes it using L2 normalization, processes
+            it through the fully connected layer, scales the resulting logits, and returns them.
+    """
+
+    def __init__(self, n_classes: int, emb_size: int, scale: int) -> None:
         super().__init__()
         self.scale = scale
-        self.fc = nn.Linear(emb_size, num_class)
+        self.fc = nn.Linear(emb_size, n_classes, bias=False)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
-        features = l2_norm(features)
+        features = F.normalize(features, dim=1)
         logits = self.fc(features) * self.scale
-
         return logits
 
 
@@ -86,7 +102,7 @@ class MultiheadModel(nn.Module):
         self.embedding_model = embedding_model
         self.emb_size = embedding_model.out_features
 
-        self.binary_head = BinaryHead(self.n_classes, self.emb_size, scale)
+        self.binary_head = ScaledLogitClassifier(self.n_classes, self.emb_size, scale)
         self.sep_side_train = sep_side_train
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:

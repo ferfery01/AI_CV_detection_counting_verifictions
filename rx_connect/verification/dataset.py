@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import albumentations as A
 import lightning as L
@@ -20,16 +20,48 @@ logger = setup_logger()
 
 
 class SingleImagePillID(Dataset):
+    """A PyTorch Dataset subclass, SingleImagePillID, dedicated to efficiently loading
+    and preprocessing data for machine learning models, specifically designed for pill
+    verification tasks.
+
+    This class manages image loading, optional image rotation, data augmentation, and
+    label encoding using the provided LabelEncoder. The image transformations are performed
+    using the Albumentations library.
+
+    Attributes:
+        root (Union[str, Path]): The root directory where the ePillID dataset resides.
+        df (pd.DataFrame): A DataFrame that encapsulates details about the pill images,
+            such as 'image_path', 'is_ref', 'is_front', and 'pilltype_id'.
+        label_encoder (LabelEncoder): An instance of LabelEncoder that converts pill type
+            IDs into a format suitable for machine learning models.
+        train (bool): A flag indicating if the dataset is used for model training or evaluation.
+        transforms (A.Compose): An instance of Albumentations Compose that holds the
+            pipeline of image transformations to be applied to the loaded images.
+        rotate_aug (Optional[int]): The degree of rotation applied to images for augmentation
+            purposes. This is utilized only during testing or evaluation.
+
+    Methods:
+        rotate_df(df: pd.DataFrame, n_rotations: int = 24) -> pd.DataFrame:
+            Enhances the original DataFrame by creating various rotation states of each image.
+        load_img(df_row: pd.Series) -> torch.Tensor:
+            Loads an image given a DataFrame row, applying the prescribed transformations.
+        __len__() -> int:
+            Provides the total count of images within the dataset.
+        __getitem__(idx: int) -> ePillIDDataset:
+            Facilitates the loading and returning of an image, its corresponding label, and
+            associated metadata from the dataset given an index.
+    """
+
     def __init__(
         self,
-        root: Path,
+        root: Union[str, Path],
         df: pd.DataFrame,
         label_encoder: LabelEncoder,
         train: bool,
         transforms: A.Compose,
         rotate_aug: Optional[int] = None,
-    ):
-        self.root = root
+    ) -> None:
+        self.root = Path(root)
         self.label_encoder = label_encoder
         self.train = train
         self.rotate_aug = rotate_aug
@@ -93,11 +125,10 @@ class PillIDDataModule(L.LightningDataModule):
         root: Path,
         df: pd.DataFrame,
         label_encoder: LabelEncoder,
-        batch_size: int = 32,
+        batch_size: int,
         num_workers: int = 8,
         pin_memory: bool = True,
-        pin_memory_device: str = "",
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         self.root = root
@@ -106,12 +137,11 @@ class PillIDDataModule(L.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
-        self.pin_memory_device = pin_memory_device
         self.kwargs = kwargs
 
         # Initialize transforms
-        self.train_transforms = RefConsTransform(train=True, normalize=True, **kwargs)
-        self.val_transforms = RefConsTransform(train=False, normalize=True, **kwargs)
+        self.train_transforms = RefConsTransform(train=True, normalize=True, **self.kwargs)
+        self.val_transforms = RefConsTransform(train=False, normalize=True, **self.kwargs)
 
         self.init_dataframes()
 
@@ -137,7 +167,6 @@ class PillIDDataModule(L.LightningDataModule):
                 self.label_encoder,
                 train=True,
                 transforms=self.train_transforms,
-                **self.kwargs,
             )
             self.val_dataset = SingleImagePillID(
                 self.root,
@@ -166,20 +195,21 @@ class PillIDDataModule(L.LightningDataModule):
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return DataLoader(
             self.train_dataset,
+            batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            pin_memory_device=self.pin_memory_device,
+            drop_last=True,
         )
 
     def val_dataloader(self) -> EVAL_DATALOADERS:
         return DataLoader(
             self.val_dataset,
+            batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             drop_last=False,
-            pin_memory_device=self.pin_memory_device,
         )
 
     def test_dataloader(self) -> EVAL_DATALOADERS:
@@ -192,7 +222,6 @@ class PillIDDataModule(L.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             drop_last=False,
-            pin_memory_device=self.pin_memory_device,
         )
         ref_dl = DataLoader(
             self.ref_dataset,
@@ -201,7 +230,6 @@ class PillIDDataModule(L.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             drop_last=False,
-            pin_memory_device=self.pin_memory_device,
         )
         return [test_dl, ref_dl]
 

@@ -1,4 +1,5 @@
-from typing import Optional
+import re
+from typing import List, Optional, Union
 
 import torch
 
@@ -48,3 +49,35 @@ def get_best_available_device(allow_mps: bool = False) -> torch.device:
 
     # If no free CUDA device is available and MPS is not available, return CPU
     return torch.device("cpu")
+
+
+def check_format(s: str) -> bool:
+    """Check if a string is a comma-separated list of integers."""
+    pattern = r"^\d+(,\s*\d+)*$"
+    return bool(re.match(pattern, s))
+
+
+def parse_cuda_for_devices(cuda: Optional[str] = None) -> Union[int, List[int]]:
+    """Parse the cuda flag to return a list of device ids.
+
+    - If cuda is None, return 1.
+    - If cuda is -1, it returns all the available CUDA devices.
+    - If cuda is a device id, it returns [device id].
+    - If cuda is "1, 3", it returns [1, 3].
+
+    Raise an error if the cuda flag is malformed.
+    """
+    if cuda is None:
+        return 1
+
+    if cuda is not None and not torch.cuda.is_available():
+        raise ValueError("CUDA is not available.")
+
+    if not check_format(cuda):
+        raise ValueError("CUDA flag is malformed.")
+
+    devices: List[int] = [int(x) for x in cuda.strip().split(",") if int(x) < torch.cuda.device_count()]
+    if len(devices) == 1 and devices[0] == -1:
+        return list(range(torch.cuda.device_count()))
+    else:
+        return devices

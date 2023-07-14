@@ -40,6 +40,10 @@ MANIFEST
 # Checkpoints
 **/checkpoints/**
 *.pth*
+**/wandb/**
+
+# Logs
+**/lightning_logs/**
 
 # Dataset
 data/
