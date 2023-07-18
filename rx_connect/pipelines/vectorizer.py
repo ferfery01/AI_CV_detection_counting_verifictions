@@ -142,6 +142,22 @@ class RxVectorizerColorhist(RxVectorizer):
         return final_vector
 
 
+class RxVectorizerColorMomentHash(RxVectorizer):
+    def _load_model(self) -> None:
+        pass
+
+    def _preprocess(self, image: np.ndarray) -> np.ndarray:
+        return image
+
+    def _predict(self, image: np.ndarray) -> np.ndarray:
+        """Encodes the image using the ColorMomentHash."""
+
+        hash_embedding = cv2.img_hash.ColorMomentHash_create().compute(image).flatten()  # type: ignore
+        final_vector = hash_embedding / np.linalg.norm(hash_embedding)
+
+        return final_vector
+
+
 class RxVectorizerDB(RxVectorizer):
     def _load_model(self) -> None:
         loaded_model = read_pickle(self._model_path)
