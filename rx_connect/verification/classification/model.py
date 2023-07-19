@@ -1,17 +1,38 @@
 from collections import OrderedDict
-from typing import Dict
+from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from rx_connect.core.types.verification.model import MultiHeadModelOutput
 from rx_connect.tools.logging import setup_logger
 from rx_connect.verification.classification.base import configure_and_create_model
+from rx_connect.verification.classification.margins import build_margin_head
 
 logger = setup_logger()
 
 
 class EmbeddingModel(nn.Module):
+    """A PyTorch model class for embedding. This model includes an optional embedding layer that
+    can be skipped.
+
+    Attributes:
+        arch (str): The name of the architecture.
+        pooling (str): The name of the pooling method.
+        dropout_rate (float): The dropout rate for regularization.
+        emb_size (int): The size of the embeddings.
+        middle (int): The size of the middle layer in the optional embedding layer.
+        pretrained (bool): Whether or not to use a pretrained model.
+        skip_embedding (bool): Whether or not to skip the embedding layer.
+        out_features (int): The number of output features, equal to `emb_size`.
+        model (nn.Module): The constructed PyTorch model.
+
+    Methods:
+        forward: Forward pass for the model.
+        get_embedding: Get the embedding of an input tensor.
+    """
+
     def __init__(
         self,
         arch: str,
@@ -47,6 +68,7 @@ class EmbeddingModel(nn.Module):
         self.model = nn.Sequential(OrderedDict(layers))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass for the model."""
         return self.model(x)
 
     def get_embedding(self, x: torch.Tensor) -> torch.Tensor:
@@ -77,20 +99,42 @@ class ScaledLogitClassifier(nn.Module):
             it through the fully connected layer, scales the resulting logits, and returns them.
     """
 
-    def __init__(self, n_classes: int, emb_size: int, scale: int) -> None:
+    def __init__(self, emb_size: int, n_classes: int, scale: int) -> None:
         super().__init__()
         self.scale = scale
         self.fc = nn.Linear(emb_size, n_classes, bias=False)
 
-    def forward(self, features: torch.Tensor) -> torch.Tensor:
-        features = F.normalize(features, dim=1)
-        logits = self.fc(features) * self.scale
+    def forward(self, emb: torch.Tensor) -> torch.Tensor:
+        emb = F.normalize(emb, dim=1)
+        logits = self.fc(emb) * self.scale
         return logits
+
+
+class MarginHead(nn.Module):
+    """General margin head class that wraps the construction of specific margin heads like ArcFaceHead and
+    CosFaceHead.
+    """
+
+    def __init__(
+        self, head_type: str, emb_size: int, num_class: int, scale: int = 64, m: float = 0.5
+    ) -> None:
+        super().__init__()
+        self.fc = build_margin_head(head_type, emb_size, num_class, scale, m)
+
+    def forward(self, emb: torch.Tensor, label: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+        return self.fc(emb, label) if label is not None else None
 
 
 class MultiheadModel(nn.Module):
     def __init__(
-        self, embedding_model: EmbeddingModel, n_classes: int, sep_side_train: bool = True, scale: int = 64
+        self,
+        embedding_model: EmbeddingModel,
+        n_classes: int,
+        sep_side_train: bool,
+        head_type: str = "arcface",
+        scale1: int = 30,
+        scale2: int = 64,
+        m: float = 0.5,
     ) -> None:
         super().__init__()
 
@@ -102,15 +146,17 @@ class MultiheadModel(nn.Module):
         self.embedding_model = embedding_model
         self.emb_size = embedding_model.out_features
 
-        self.binary_head = ScaledLogitClassifier(self.n_classes, self.emb_size, scale)
+        self.cls_head = ScaledLogitClassifier(self.emb_size, self.n_classes, scale=scale1)
+        self.margin_head = MarginHead(head_type, self.emb_size, self.n_classes, scale=scale2, m=m)
         self.sep_side_train = sep_side_train
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor, target: Optional[torch.Tensor] = None) -> MultiHeadModelOutput:
         """Forward pass of the model. Returns a dictionary with the embedding and logits."""
         emb = self.embedding_model(x)
-        logits = self.binary_head(emb)
+        logits = self.cls_head(emb)
+        arcface_logits = self.margin_head(emb, target)
 
-        return {"emb": emb, "logits": logits}
+        return MultiHeadModelOutput(emb=emb, logits=logits, arcface_logits=arcface_logits)
 
     def get_embedding(self, x: torch.Tensor) -> torch.Tensor:
         """Get the embedding of the input tensor. This is an alias for `self.forward(x)["emb"]`."""
@@ -129,14 +175,15 @@ class MultiheadModel(nn.Module):
         back = logits[:, actual_n_classes:]
         logger.assertion(front.shape == back.shape, f"{front.shape} != {back.shape}")
 
-        logits = torch.stack([front, back], dim=0)
-        logits, _ = logits.max(dim=0)
+        # Take the max of the logits for the front and back side of the pill
+        logits = torch.stack([front, back], dim=-1)
+        logits, _ = logits.max(dim=-1)
 
         return logits
 
     def get_original_logits(self, x: torch.Tensor, softmax: bool = False) -> torch.Tensor:
         """Get the logits for the original classes."""
-        logits = self.forward(x)["logits"]
+        logits = self.forward(x, target=None)["logits"]
         if softmax:
             logits = F.softmax(logits, dim=1)
 

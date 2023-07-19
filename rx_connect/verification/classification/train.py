@@ -14,6 +14,7 @@ from lightning.pytorch.callbacks import (
 )
 from lightning.pytorch.loggers import Logger, WandbLogger
 
+from rx_connect.core.types.verification.model import LossWeights
 from rx_connect.tools.device import parse_cuda_for_devices
 from rx_connect.tools.env_setup import set_max_open_files_limit
 from rx_connect.tools.logging import setup_logger
@@ -55,6 +56,15 @@ FOLDS_DIR = "folds/pilltypeid_nih_sidelbls0.01_metric_5folds/base/"
     help="Pooling method",
 )
 @click.option(
+    "--head-type",
+    default="arcface",
+    show_default=True,
+    type=click.Choice(["arcface", "cosface"]),
+    help="Type of margin-based loss head",
+)
+@click.option("-s", "--scale", default=64, show_default=True, help="Scale for the margin-based loss")
+@click.option("-m", "--margin", default=0.5, show_default=True, help="Margin for the margin-based loss")
+@click.option(
     "-dr",
     "--dropout",
     default=0.5,
@@ -63,7 +73,7 @@ FOLDS_DIR = "folds/pilltypeid_nih_sidelbls0.01_metric_5folds/base/"
 )
 @click.option(
     "-ed",
-    "--metric-emb-dim",
+    "--emb-dim",
     default=2048,
     show_default=True,
     help="Dimension of the embedding feature vector used for metric learning",
@@ -87,6 +97,18 @@ FOLDS_DIR = "folds/pilltypeid_nih_sidelbls0.01_metric_5folds/base/"
     default=True,
     show_default=True,
     help="Train with side info, i.e. front and back side of the pills will be treated as different classes",
+)
+@click.option(
+    "-cw",
+    "--cls-weight",
+    default=1.0,
+    help="Weight for the classification loss",
+)
+@click.option(
+    "-aw",
+    "--arcface-weight",
+    default=0.0,
+    help="Weight for the arcface loss",
 )
 @click.option(
     "-e",
@@ -137,6 +159,13 @@ FOLDS_DIR = "folds/pilltypeid_nih_sidelbls0.01_metric_5folds/base/"
     help="Number of epochs to wait before early stopping",
 )
 @click.option(
+    "-mm",
+    "--metric-monitor",
+    default="total_loss",
+    type=click.Choice(["total_loss", "acc1", "acc5"]),
+    help="Metric to monitor for early stopping and reducing learning rate.",
+)
+@click.option(
     "--cuda",
     type=str,
     required=True if torch.cuda.is_available() else False,
@@ -163,11 +192,16 @@ def main(
     arch: str,
     pretrained: bool,
     pooling: str,
+    head_type: str,
+    scale: int,
+    margin: float,
     dropout: float,
-    metric_emb_dim: int,
+    emb_dim: int,
     add_perspective: bool,
     num_workers: int,
     sep_side_train: bool,
+    cls_weight: float,
+    arcface_weight: float,
     epochs: int,
     batch_size: int,
     initial_lr: float,
@@ -175,6 +209,7 @@ def main(
     lr_factor: float,
     optimizer: str,
     patience: int,
+    metric_monitor: str,
     cuda: Optional[str],
     mixed_precision: bool,
     debug: bool,
@@ -185,6 +220,10 @@ def main(
     )
     if mixed_precision:
         logger.assertion(torch.cuda.is_available(), "Mixed precision training is only supported on CUDA.")
+
+    loss_weights = LossWeights(cls=cls_weight, arcface=arcface_weight)
+    loss_w_sum: float = sum(list(loss_weights.values()))  # type: ignore[arg-type]
+    logger.assertion(loss_w_sum == 1.0, f"Sum of loss weights should be 1.0. Got {loss_w_sum}")
 
     # Set the maximum number of open files allowed by the systems
     set_max_open_files_limit()
@@ -205,7 +244,7 @@ def main(
     # Init logger
     wandb_logger: Union[Logger, bool] = True
     if not debug:
-        wandb_logger = WandbLogger(name=expt_name, project="Pill Verification", log_model="all")
+        wandb_logger = WandbLogger(name=expt_name, project="Pill Verification")
 
     # Init data paths
     folds_csv_dir = Path(data_dir) / FOLDS_DIR
@@ -231,17 +270,18 @@ def main(
     n_classes = len(label_encoder.classes_)
 
     # Init callbacks
-    monitor: str = "val_acc5_epoch"
+    monitor: str = f"val_{metric_monitor}_epoch"
+    mode: str = "min" if "loss" in metric_monitor else "max"
     early_stop_callback = EarlyStopping(
         monitor=monitor,
         patience=patience,
         verbose=True,
-        mode="max",
+        mode=mode,
     )
     checkpoint_callback = ModelCheckpoint(
         monitor=monitor,
         verbose=True,
-        mode="max",
+        mode=mode,
         save_on_train_epoch_end=True,
         auto_insert_metric_name=True,
     )
@@ -253,18 +293,20 @@ def main(
         arch=arch,
         pooling=pooling,
         dropout_rate=dropout,
-        emb_size=metric_emb_dim,
+        emb_size=emb_dim,
         pretrained=pretrained,
     )
-    model = MultiheadModel(emb_model, n_classes, sep_side_train=sep_side_train, scale=64)
+    model = MultiheadModel(
+        emb_model, n_classes, sep_side_train=sep_side_train, head_type=head_type, scale2=scale, m=margin
+    )
 
     # Init optimizer and lr scheduler params
     optimizer_init = {"lr": initial_lr, "weight_decay": 1e-4}
-    lr_scheduler_init = {"patience": lr_patience, "factor": lr_factor}
+    lr_scheduler_init = {"mode": mode, "factor": lr_factor, "patience": lr_patience}
 
     # Init lightning model
     lightning_model = LightningModel(
-        model, n_classes, monitor, sep_side_train, batch_size, optimizer, optimizer_init, lr_scheduler_init
+        model, monitor, sep_side_train, loss_weights, batch_size, optimizer, optimizer_init, lr_scheduler_init
     )
 
     # Init trainer
