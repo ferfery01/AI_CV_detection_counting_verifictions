@@ -46,7 +46,7 @@ class MarginHead(ABC, nn.Module):
         """
         # Normalize the weights of the last fully connected layer
         with torch.no_grad():
-            self.kernel.weight = F.normalize(self.kernel.weight, dim=0)
+            self.kernel.weight.data = F.normalize(self.kernel.weight.data, dim=1)
 
         # Normalize the input embeddings
         emb = F.normalize(emb, dim=1)
@@ -87,7 +87,7 @@ class CosFaceHead(MarginHead):
         d_theta = self.m * F.one_hot(label, num_classes=self.n_classes)
 
         # Calculate cosθ - m
-        cos_theta_m = self.scale * (cos_theta - d_theta)
+        cos_theta_m = cos_theta - d_theta
 
         # Scale the output in order for the softmax loss to converge, as described in the paper
         # NormFace (https://arxiv.org/abs/1704.06369)
@@ -126,11 +126,43 @@ class ArcFaceHead(MarginHead):
 
             # Calculate cos(theta + m)
             theta_m = torch.clip(theta + one_hot, min=self.eps, max=math.pi - self.eps)
-            cosine_m = theta_m.cos()
+            d_theta = torch.cos(theta_m) - cos_theta
 
         # Scale the output in order for the softmax loss to converge, as described in the paper
         # NormFace (https://arxiv.org/abs/1704.06369)
-        return self.scale * cosine_m
+        return self.scale * (cos_theta + d_theta)
+
+
+class SphereFaceHead(MarginHead):
+    """SphereFace Margin Softmax loss layer, proposed in "SphereFace: Deep Hypersphere Embedding for
+    Face Recognition" (https://arxiv.org/abs/1704.08063). It enhances the discriminative power of the
+    deeply learned features.
+    """
+
+    def __init__(
+        self, emb_size: int, n_classes: int, scale: int = 64, m: float = 1.35, eps: float = 1e-5
+    ) -> None:
+        super().__init__(emb_size, n_classes, scale, m, eps)
+
+    def forward(self, emb: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
+        # Compute the cosine similarity b/w the normalized embeddings and the normalized weights
+        cos_theta = self.compute_cosine(emb).clamp(-1 + self.eps, 1 - self.eps)  # for numerical stability
+
+        with torch.no_grad():
+            # Compute the theta value
+            theta = cos_theta.acos()
+
+            # Compute m(theta) value
+            one_hot = self.m * F.one_hot(label, num_classes=self.n_classes)
+            m_theta = torch.mul(theta, one_hot)
+
+            # Compute the phi(theta) value
+            k = (m_theta / math.pi).floor()
+            sign = -2 * torch.remainder(k, 2) + 1  # (-1)**k
+            phi_theta = sign * torch.cos(m_theta) - 2.0 * k
+            d_theta = phi_theta - cos_theta
+
+        return self.scale * (cos_theta + d_theta)
 
 
 def build_margin_head(
@@ -156,5 +188,9 @@ def build_margin_head(
         return ArcFaceHead(emb_size, n_classes, scale, m, eps)
     elif head_type == "cosface":
         return CosFaceHead(emb_size, n_classes, scale, m, eps)
+    elif head_type == "sphereface":
+        return SphereFaceHead(emb_size, n_classes, scale, m, eps)
     else:
-        raise ValueError(f"Invalid margin head type: {head_type}. Valid types are 'arcface' and 'cosface'.")
+        raise ValueError(
+            f"Invalid margin head type: {head_type}. Valid types are `arcface`, `cosface`, and `sphereface`."
+        )

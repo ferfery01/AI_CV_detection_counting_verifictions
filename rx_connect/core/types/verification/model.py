@@ -5,13 +5,13 @@ import torch
 
 class MultiHeadModelOutput(TypedDict):
     emb: torch.Tensor
-    logits: torch.Tensor
-    arcface_logits: Optional[torch.Tensor]
+    cls_logits: torch.Tensor
+    angular_logits: Optional[torch.Tensor]
 
 
 class LossWeights(TypedDict):
     cls: float
-    arcface: float
+    angular: float
 
 
 class MultiheadLossType(TypedDict):

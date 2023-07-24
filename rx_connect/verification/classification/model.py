@@ -39,7 +39,7 @@ class EmbeddingModel(nn.Module):
         pooling: str,
         dropout_rate: float = 0.5,
         emb_size: int = 2048,
-        middle: int = 1000,
+        middle: int = 1024,
         pretrained: bool = True,
         skip_embedding: bool = False,
     ) -> None:
@@ -153,10 +153,10 @@ class MultiheadModel(nn.Module):
     def forward(self, x: torch.Tensor, target: Optional[torch.Tensor] = None) -> MultiHeadModelOutput:
         """Forward pass of the model. Returns a dictionary with the embedding and logits."""
         emb = self.embedding_model(x)
-        logits = self.cls_head(emb)
-        arcface_logits = self.margin_head(emb, target)
+        cls_logits = self.cls_head(emb)
+        angular_logits = self.margin_head(emb, target)
 
-        return MultiHeadModelOutput(emb=emb, logits=logits, arcface_logits=arcface_logits)
+        return MultiHeadModelOutput(emb=emb, cls_logits=cls_logits, angular_logits=angular_logits)
 
     def get_embedding(self, x: torch.Tensor) -> torch.Tensor:
         """Get the embedding of the input tensor. This is an alias for `self.forward(x)["emb"]`."""
@@ -183,7 +183,7 @@ class MultiheadModel(nn.Module):
 
     def get_original_logits(self, x: torch.Tensor, softmax: bool = False) -> torch.Tensor:
         """Get the logits for the original classes."""
-        logits = self.forward(x, target=None)["logits"]
+        logits = self.forward(x, target=None)["cls_logits"]
         if softmax:
             logits = F.softmax(logits, dim=1)
 

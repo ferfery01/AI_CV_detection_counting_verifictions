@@ -41,14 +41,14 @@ class MultiHeadLoss(nn.Module):
         # Compute the classification (Softmax) loss
         cls_loss: Optional[torch.Tensor] = None
         if self.weights["cls"] > 0:
-            cls_loss = F.cross_entropy(outputs["logits"], target, reduction="mean")
+            cls_loss = F.cross_entropy(outputs["cls_logits"], target, reduction="mean")
             weighted_loss += cls_loss * self.weights["cls"]
 
         # Compute the arcface loss
         acrface_loss: Optional[torch.Tensor] = None
-        if self.weights["arcface"] > 0:
-            assert outputs["arcface_logits"] is not None, "Arcface logits must be provided."
-            acrface_loss = F.cross_entropy(outputs["arcface_logits"], target, reduction="mean")
-            weighted_loss += acrface_loss * self.weights["arcface"]
+        if self.weights["angular"] > 0:
+            assert outputs["angular_logits"] is not None, "Angular logits must be provided."
+            acrface_loss = F.cross_entropy(outputs["angular_logits"], target, reduction="mean")
+            weighted_loss += acrface_loss * self.weights["angular"]
 
         return MultiheadLossType(cls=cls_loss, arcface=acrface_loss, total=weighted_loss)

@@ -59,7 +59,7 @@ FOLDS_DIR = "folds/pilltypeid_nih_sidelbls0.01_metric_5folds/base/"
     "--head-type",
     default="arcface",
     show_default=True,
-    type=click.Choice(["arcface", "cosface"]),
+    type=click.Choice(["arcface", "cosface", "sphereface"]),
     help="Type of margin-based loss head",
 )
 @click.option("-s", "--scale", default=64, show_default=True, help="Scale for the margin-based loss")
@@ -106,9 +106,9 @@ FOLDS_DIR = "folds/pilltypeid_nih_sidelbls0.01_metric_5folds/base/"
 )
 @click.option(
     "-aw",
-    "--arcface-weight",
+    "--angular-weight",
     default=0.0,
-    help="Weight for the arcface loss",
+    help="Weight for the angular margin-based loss",
 )
 @click.option(
     "-e",
@@ -201,7 +201,7 @@ def main(
     num_workers: int,
     sep_side_train: bool,
     cls_weight: float,
-    arcface_weight: float,
+    angular_weight: float,
     epochs: int,
     batch_size: int,
     initial_lr: float,
@@ -220,10 +220,6 @@ def main(
     )
     if mixed_precision:
         logger.assertion(torch.cuda.is_available(), "Mixed precision training is only supported on CUDA.")
-
-    loss_weights = LossWeights(cls=cls_weight, arcface=arcface_weight)
-    loss_w_sum: float = sum(list(loss_weights.values()))  # type: ignore[arg-type]
-    logger.assertion(loss_w_sum == 1.0, f"Sum of loss weights should be 1.0. Got {loss_w_sum}")
 
     # Set the maximum number of open files allowed by the systems
     set_max_open_files_limit()
@@ -305,6 +301,7 @@ def main(
     lr_scheduler_init = {"mode": mode, "factor": lr_factor, "patience": lr_patience}
 
     # Init lightning model
+    loss_weights = LossWeights(cls=cls_weight, angular=angular_weight)
     lightning_model = LightningModel(
         model, monitor, sep_side_train, loss_weights, batch_size, optimizer, optimizer_init, lr_scheduler_init
     )

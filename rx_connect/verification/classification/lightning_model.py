@@ -7,7 +7,11 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchmetrics import Accuracy
 
 from rx_connect.core.types.verification.dataset import ePillIDDatasetBatch
-from rx_connect.core.types.verification.model import LossWeights, MultiHeadModelOutput
+from rx_connect.core.types.verification.model import (
+    LossWeights,
+    MultiheadLossType,
+    MultiHeadModelOutput,
+)
 from rx_connect.tools.logging import setup_logger
 from rx_connect.verification.classification.losses import MultiHeadLoss
 from rx_connect.verification.classification.model import MultiheadModel
@@ -53,10 +57,45 @@ class LightningModel(L.LightningModule):
         self.criterion = MultiHeadLoss(self.n_classes, self.sep_side_train, self.loss_weights)
 
     def forward(self, x: torch.Tensor, labels: torch.Tensor) -> MultiHeadModelOutput:
-        if self.loss_weights["arcface"] > 0:
+        if self.loss_weights["angular"] > 0:
             return self.model(x, target=labels)
         else:
             return self.model(x)
+
+    def _compute_logits(self, outputs: MultiHeadModelOutput) -> Dict[str, torch.Tensor]:
+        """Compute different logits from the model outputs."""
+        logits = {}
+        if outputs["cls_logits"] is not None:
+            logits["cls"] = outputs["cls_logits"]
+        if outputs["angular_logits"] is not None:
+            logits["angular"] = outputs["angular_logits"]
+        if outputs["cls_logits"] is not None and outputs["angular_logits"] is not None:
+            logits["total"] = torch.mean(
+                torch.stack([outputs["cls_logits"], outputs["angular_logits"]]), dim=0
+            )
+        else:
+            logits["total"] = (
+                outputs["cls_logits"] if outputs["cls_logits"] is not None else outputs["angular_logits"]
+            )
+
+        return logits
+
+    def _log_metrics(
+        self,
+        labels: torch.Tensor,
+        losses: MultiheadLossType,
+        logits: Dict[str, torch.Tensor],
+        prefix: str,
+        **kwargs,
+    ) -> None:
+        """Log losses and metrics to the logger."""
+        for key, value in losses.items():
+            if value is not None:
+                self.log(f"{prefix}_{key}_loss", value, **kwargs)  # type: ignore
+
+        for key, value in logits.items():
+            self.log(f"{prefix}_{key}_acc1", self.acc1(value, labels), **kwargs)  # type: ignore
+            self.log(f"{prefix}_{key}_acc5", self.acc5(value, labels), **kwargs)  # type: ignore
 
     def _compute_step(self, batch: ePillIDDatasetBatch, prefix: str) -> torch.Tensor:
         inputs, labels, is_front, is_ref = batch["image"], batch["label"], batch["is_front"], batch["is_ref"]
@@ -65,10 +104,13 @@ class LightningModel(L.LightningModule):
         # Compute loss
         losses = self.criterion(outputs, labels, is_front, is_ref)
 
+        # Compute logits
+        logits = self._compute_logits(outputs)
+
         # Shift back the logits to the original classes, if needed
-        logits = outputs["logits"]
         if self.sep_side_train:
-            logits = self.model.shift_label_indexes(logits)
+            for key, value in logits.items():
+                logits[key] = self.model.shift_label_indexes(value)
 
         # Log loss and metric
         log_args = {
@@ -78,12 +120,7 @@ class LightningModel(L.LightningModule):
             "on_epoch": True,
             "batch_size": self.batch_size,
         }
-        for key, value in losses.items():
-            if value is not None:
-                self.log(f"{prefix}_{key}_loss", value, **log_args)  # type: ignore
-
-        self.log(f"{prefix}_acc1", self.acc1(logits, labels), **log_args)  # type: ignore
-        self.log(f"{prefix}_acc5", self.acc5(logits, labels), **log_args)  # type: ignore
+        self._log_metrics(labels, losses, logits, prefix, **log_args)
 
         return losses["total"]
 
