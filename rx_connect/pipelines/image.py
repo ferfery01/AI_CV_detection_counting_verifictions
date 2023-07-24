@@ -26,11 +26,15 @@ class RxImageBase:
     """Base class for RxImage objects. This class implements the loading methods."""
 
     def __init__(self) -> None:
+        self._reset()
+
+    def _reset(self):
         self._image: Optional[np.ndarray] = None
         self._ref_image: Optional[np.ndarray] = None
 
     def load_from_camera(self) -> None:
         """Loads the image from default camera."""
+        self._reset()
         _, self._image = cv2.VideoCapture(0).read()
 
     def load_image(self, image: Union[np.ndarray, torch.Tensor, Image.Image, str, Path]) -> None:
@@ -42,6 +46,7 @@ class RxImageBase:
         Args:
             image (Union[np.ndarray, torch.Tensor, Image]): Image as image object.
         """
+        self._reset()
         if isinstance(image, np.ndarray):
             self._image = image
         elif isinstance(image, torch.Tensor):
@@ -61,6 +66,7 @@ class RxImageBase:
             generator_obj (Generator): Image Generator object.
             kwargs: Keyword arguments to be passed to the generator object.
         """
+        self._reset()
         self._image, *_ = generator_obj.generate(**kwargs)
         self.load_ref_image(generator_obj.reference_pills[0])
 
@@ -100,8 +106,11 @@ class RxImageCount(RxImageBase):
 
     def __init__(self) -> None:
         super().__init__()
-        self._bounding_boxes: Optional[List[CounterModuleOutput]] = None
         self._counterObj: Optional[RxDetection] = None
+
+    def _reset(self):
+        super()._reset()
+        self._bounding_boxes: Optional[List[CounterModuleOutput]] = None
 
     def set_counter(self, counterObj: RxDetection) -> None:
         """Sets the counter object. Reset any existing results to None when there's a new counter.
@@ -110,7 +119,7 @@ class RxImageCount(RxImageBase):
             counterObj (Counter): Counter object.
         """
         self._counterObj = counterObj
-        self._bounding_boxes = None
+        self._reset()
 
     def visualize_ROIs(self, img_per_row: int = 5, labels: Optional[List[str]] = None) -> None:
         """Utility function to visualize cropped ROIs.
@@ -147,7 +156,7 @@ class RxImageCount(RxImageBase):
         """Utility function to draw bounding boxes on the image."""
         img_bb = self.image.copy()
         for (x1, y1, x2, y2), _ in self.bounding_boxes:
-            cv2.rectangle(img_bb, (x1, y1), (x2, y2), (255, 0, 0), 1)
+            cv2.rectangle(img_bb, (x1, y1), (x2, y2), (255, 0, 0), 2)
         return img_bb
 
     def visualize_bounding_boxes(self) -> None:
@@ -195,6 +204,9 @@ class RxImageSegment(RxImageCount):
     def __init__(self) -> None:
         super().__init__()
         self._segmenterObj: Optional[RxSegmentation] = None
+
+    def _reset(self):
+        super()._reset()
         self._background_mask: Optional[np.ndarray] = None
         self._masked_ROIs: Optional[List[np.ndarray]] = None
         self._detail_ROI_seg: Optional[List[List[SegmentResult]]] = None
@@ -206,9 +218,7 @@ class RxImageSegment(RxImageCount):
             segmenterObj (Segmenter): Segmenter object.
         """
         self._segmenterObj = segmenterObj
-        self._background_mask = None
-        self._masked_ROIs = None
-        self._detail_ROI_seg = None
+        self._reset()
 
     def visualize_background(self) -> None:
         """Visualize the background segment."""
@@ -295,10 +305,14 @@ class RxImageVerify(RxImageSegment):
 
     def __init__(self) -> None:
         super().__init__()
+        self._vectorizerObj: Optional[RxVectorizer] = None
+        self._reset()
+
+    def _reset(self):
+        super()._reset()
         self._vectorized_ROIs: Optional[List[np.ndarray]] = None
         self._vectorized_ref: Optional[np.ndarray] = None
         self._similarity_scores: Optional[np.ndarray] = None
-        self._vectorizerObj: Optional[RxVectorizer] = None
 
     def set_vectorizer(
         self, vectorizerObj: RxVectorizer, similarity_fn: Callable[..., np.ndarray] = cosine_similarity
@@ -310,9 +324,7 @@ class RxImageVerify(RxImageSegment):
             similary_fn (function) :  Callable[[...], np.ndarray]
         """
         self._vectorizerObj = vectorizerObj
-        self._vectorized_ROIs = None
-        self._vectorized_ref = None
-        self._similarity_scores = None
+        self._reset()
 
         # Default similarity function is cosine similarity
         self._similarity_fn = similarity_fn
@@ -324,7 +336,7 @@ class RxImageVerify(RxImageSegment):
             img_per_col (int): The number of images per column.
         """
         labels = [f"{i}: {score*100:.1f}%" for i, score in enumerate(self.similarity_scores)]
-        self.visualize_ROIs(labels=labels)
+        self.visualize_ROIs(img_per_col, labels=labels)
 
     @property
     def vectorized_ref(self) -> np.ndarray:
