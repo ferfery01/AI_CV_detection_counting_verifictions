@@ -4,6 +4,7 @@ from typing import Any, ClassVar, Dict, List, Optional, Union, cast
 
 import cv2
 import numpy as np
+from sklearn.metrics.pairwise import euclidean_distances
 from vlad import VLAD
 
 from rx_connect import CACHE_DIR, SHARED_REMOTE_DIR
@@ -179,3 +180,10 @@ class RxVectorizerDB(RxVectorizer):
             f"Shape mismatch - input-vector: {preproc_vector.shape}, VectorDB: {self._model.shape}.",
         )
         return np.dot(preproc_vector, self._model.T)
+
+
+def custom_similarity_fn_L2(v1, v2) -> np.ndarray:
+    """Calculates L2 norm in range [0,1]"""
+
+    d = euclidean_distances(v1, v2)
+    return 1 - d / 2

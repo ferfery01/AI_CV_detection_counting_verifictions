@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Optional, Union, cast
+from typing import Callable, Dict, List, Optional, Union, cast
 
 import cv2
 import numpy as np
@@ -297,14 +297,17 @@ class RxImageVerify(RxImageSegment):
         super().__init__()
         self._vectorized_ROIs: Optional[List[np.ndarray]] = None
         self._vectorized_ref: Optional[np.ndarray] = None
-        self._similarity_scores: Optional[List[float]] = None
+        self._similarity_scores: Optional[np.ndarray] = None
         self._vectorizerObj: Optional[RxVectorizer] = None
 
-    def set_vectorizer(self, vectorizerObj: RxVectorizer) -> None:
+    def set_vectorizer(
+        self, vectorizerObj: RxVectorizer, similarity_fn: Callable[..., np.ndarray] = cosine_similarity
+    ) -> None:
         """Sets the vectorizer object. Reset any existing results to None when there's a new vectorizer.
 
         Args:
             vectorizerObj (vectorizer): Vectorizer object.
+            similary_fn (function) :  Callable[[...], np.ndarray]
         """
         self._vectorizerObj = vectorizerObj
         self._vectorized_ROIs = None
@@ -312,7 +315,7 @@ class RxImageVerify(RxImageSegment):
         self._similarity_scores = None
 
         # Default similarity function is cosine similarity
-        self._similarity_fn = cosine_similarity
+        self._similarity_fn = similarity_fn
 
     def visualize_similarity_scores(self, img_per_col: int = 5) -> None:
         """Utility function to visualize similarity scores along with ROIs.
@@ -348,7 +351,7 @@ class RxImageVerify(RxImageSegment):
         return self._vectorized_ROIs
 
     @property
-    def similarity_scores(self) -> List[float]:
+    def similarity_scores(self) -> np.ndarray:
         """Returns the similarity for all the ROIs."""
         if self._similarity_scores is None:
             self._similarity_scores = self._similarity_fn(
