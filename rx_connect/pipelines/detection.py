@@ -61,7 +61,7 @@ class RxDetection(RxBase):
 
         return output_results
 
-    @timer
+    @timer()
     def count(self, image: np.ndarray) -> List[CounterModuleOutput]:
         """Counts the number of objects in the image and returns a list of CounterModuleOutput objects."""
         logger.assertion(image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array.")

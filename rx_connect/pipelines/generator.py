@@ -178,7 +178,7 @@ class RxImageGenerator:
 
         return ImageComposition(img_comp, mask_comp, labels_comp)
 
-    @timer
+    @timer()
     def generate(self, new_bg: bool = True, new_pill: bool = True) -> ImageComposition:
         """This is an alias for __call__."""
         return self(new_bg, new_pill)

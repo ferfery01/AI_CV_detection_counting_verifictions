@@ -45,7 +45,7 @@ class RxVectorizer(ABC):
     def __setstate__(self, state: Dict[str, Any]):
         self.__dict__.update(state)
 
-    @timer
+    @timer()
     def encode(self, images: Union[np.ndarray, List[np.ndarray]]) -> Union[np.ndarray, List[np.ndarray]]:
         """Encode one or multiple images."""
         if isinstance(images, np.ndarray):

@@ -77,7 +77,7 @@ class RxSegmentation(RxBase):
             for result in prediction
         ]
 
-    @timer
+    @timer()
     def segment_full(self, image: np.ndarray) -> List[SamHqSegmentResult]:
         """
         Perform full segmentation.

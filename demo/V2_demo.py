@@ -1,5 +1,4 @@
 import logging
-import time
 from typing import Any, Dict, List, Tuple, cast
 
 import gradio as gr
@@ -12,6 +11,7 @@ from rx_connect.pipelines.image import RxImage
 from rx_connect.pipelines.segment import RxSegmentation
 from rx_connect.pipelines.vectorizer import RxVectorizerColorhist
 from rx_connect.tools.logging import setup_logger
+from rx_connect.tools.timers import timer
 
 logger = setup_logger()
 log_file = CACHE_DIR / "demo_v2.log"
@@ -30,24 +30,28 @@ def demo_init() -> None:
     """
     open(log_file, "w").close()
     logger.info("Initialization started...")
-    t = time.time()
-    global GENERATOR_OBJ
+    with timer() as t:
+        global GENERATOR_OBJ
 
-    logger.info("\tPreparing image generation tool...")
-    GENERATOR_OBJ = RxImageGenerator(num_pills_type=2)
-    logger.info("\tPreparing pill detection tool...")
-    counterObj = RxDetection()
-    logger.info("\tPreparing segmentation tool...")
-    segmentObj = RxSegmentation()
-    logger.info("\tPreparing vectorization tool...")
-    vectorizerObj = RxVectorizerColorhist()
+        logger.info("\tPreparing image generation tool...")
+        GENERATOR_OBJ = RxImageGenerator(num_pills_type=2)
 
-    logger.info("\tPreparing image pipeline...")
-    IMAGE_OBJ.set_counter(counterObj)
-    IMAGE_OBJ.set_segmenter(segmentObj)
-    IMAGE_OBJ.set_vectorizer(vectorizerObj)
-    STREAM_OBJ.set_counter(counterObj)
-    logger.info(f"...Initialization finished. Spent {time.time()-t:.2f} seconds.")
+        logger.info("\tPreparing pill detection tool...")
+        counterObj = RxDetection()
+
+        logger.info("\tPreparing segmentation tool...")
+        segmentObj = RxSegmentation()
+
+        logger.info("\tPreparing vectorization tool...")
+        vectorizerObj = RxVectorizerColorhist()
+
+        logger.info("\tPreparing image pipeline...")
+        IMAGE_OBJ.set_counter(counterObj)
+        IMAGE_OBJ.set_segmenter(segmentObj)
+        IMAGE_OBJ.set_vectorizer(vectorizerObj)
+        STREAM_OBJ.set_counter(counterObj)
+
+    logger.info(f"...Initialization finished. Spent {t.duration:.2f} seconds.")
 
 
 def demo_choose_source(source: str) -> Dict[str, Any]:
@@ -76,9 +80,9 @@ def demo_gen_image() -> Tuple[np.ndarray, np.ndarray]:
     Demo event function - generate and load images.
     """
     logger.info("Generation started...")
-    t = time.time()
-    IMAGE_OBJ.load_from_generator(cast(RxImageGenerator, GENERATOR_OBJ))
-    logger.info(f"...Generation finished. Spent {time.time()-t:.2f} seconds.")
+    with timer() as t:
+        IMAGE_OBJ.load_from_generator(cast(RxImageGenerator, GENERATOR_OBJ))
+    logger.info(f"...Generation finished. Spent {t.duration:.2f} seconds.")
     return IMAGE_OBJ.image, IMAGE_OBJ.ref_image
 
 
@@ -87,9 +91,9 @@ def demo_detect() -> Tuple[List[np.ndarray], np.ndarray]:
     Demo event function - detect trigger button.
     """
     logger.info("Detection started...")
-    t = time.time()
-    ROI, BB = IMAGE_OBJ.ROIs, IMAGE_OBJ.draw_bounding_boxes()
-    logger.info(f"...Detection finished. Spent {time.time()-t:.2f} seconds.")
+    with timer() as t:
+        ROI, BB = IMAGE_OBJ.ROIs, IMAGE_OBJ.draw_bounding_boxes()
+    logger.info(f"...Detection finished. Spent {t.duration:.2f} seconds.")
     return ROI, BB
 
 
@@ -98,9 +102,9 @@ def demo_segment() -> Tuple[List[np.ndarray], np.ndarray]:
     Demo event function - segment trigger button.
     """
     logger.info("Segmentation started...")
-    t = time.time()
-    mROI, mFull = IMAGE_OBJ.masked_ROIs, IMAGE_OBJ.background_segment
-    logger.info(f"...Segmentation finished. Spent {time.time()-t:.2f} seconds.")
+    with timer() as t:
+        mROI, mFull = IMAGE_OBJ.masked_ROIs, IMAGE_OBJ.background_segment
+    logger.info(f"...Segmentation finished. Spent {t.duration:.2f} seconds.")
     return mROI, mFull * 255
 
 
@@ -109,9 +113,11 @@ def demo_verify() -> list[tuple[np.ndarray, str]]:
     Demo event function - verify trigger button.
     """
     logger.info("Verification started...")
-    t = time.time()
-    verify_scores = [(ROI, f"{score:.3f}") for ROI, score in zip(IMAGE_OBJ.ROIs, IMAGE_OBJ.similarity_scores)]
-    logger.info(f"...Verification finished. Spent {time.time()-t:.2f} seconds.")
+    with timer() as t:
+        verify_scores = [
+            (ROI, f"{score:.3f}") for ROI, score in zip(IMAGE_OBJ.ROIs, IMAGE_OBJ.similarity_scores)
+        ]
+    logger.info(f"...Verification finished. Spent {t.duration:.2f} seconds.")
     return verify_scores
 
 
