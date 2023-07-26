@@ -20,6 +20,7 @@ logger.addHandler(logging.FileHandler(log_file))
 IMAGE_OBJ = RxImage()
 STREAM_OBJ = RxImage()
 GENERATOR_OBJ = None
+CURRENT_SOURCE = "upload"
 
 
 def demo_init() -> None:
@@ -54,25 +55,28 @@ def demo_init() -> None:
     logger.info(f"...Initialization finished. Spent {t.duration:.2f} seconds.")
 
 
-def demo_choose_source(source: str) -> Dict[str, Any]:
+def demo_choose_source() -> Dict[str, Any]:
     """
     Demo event function - selects image source upload/camera.
     """
+    global CURRENT_SOURCE
+    CURRENT_SOURCE = "webcam" if CURRENT_SOURCE == "upload" else "upload"
+    logger.info(f"Swithing image source to {CURRENT_SOURCE}.")
     return {
         "value": None,
-        "source": "webcam" if source == "Camera" else "upload",
+        "source": CURRENT_SOURCE,
         "streaming": False,
         "__type__": "update",
     }
 
 
-def demo_load_image(image: np.ndarray, ref_image: np.ndarray) -> None:
+def demo_load_image(image: np.ndarray, ref_image: np.ndarray, MSG: str) -> None:
     """
     Demo event function - load image from Image containers.
     """
     IMAGE_OBJ.load_image(image)
     IMAGE_OBJ.load_ref_image(ref_image)
-    logger.info("Image Loaded.")
+    logger.info(f"Input updated: {MSG}.")
 
 
 def demo_gen_image() -> Tuple[np.ndarray, np.ndarray]:
@@ -121,6 +125,32 @@ def demo_verify() -> list[tuple[np.ndarray, str]]:
     return verify_scores
 
 
+def demo_start_streaming() -> gr.update:
+    logger.info("Starting Camera...")
+    return {
+        "value": None,
+        "source": "webcam",
+        "interactive": True,
+        "streaming": True,
+        "mirror_webcam": False,
+        "__type__": "update",
+    }
+
+
+def demo_stop_streaming(current_frame: np.ndarray) -> Tuple[gr.update, np.ndarray]:
+    logger.info("Stopping Camera...")
+    return (
+        {
+            "value": None,
+            "source": "upload",
+            "interactive": False,
+            "streaming": False,
+            "__type__": "update",
+        },
+        current_frame,
+    )
+
+
 def demo_video_counter(frame: np.ndarray) -> Tuple[np.ndarray, str]:
     """
     Demo event function - video counter utility.
@@ -141,56 +171,73 @@ def create_demo() -> gr.Blocks:
     """
     Demo visualization module structure - defines the elements and the function hooks.
     """
-    with gr.Blocks(css="footer {visibility: hidden}") as demo:
-        gr.Markdown("# RxImage")
+    with gr.Blocks(css="footer {visibility: hidden}", theme=gr.themes.Soft()) as demo:
+        gr.Markdown("# RxVision")
         with gr.Tab("Image Loading"):
             with gr.Row():
-                with gr.Column():
-                    image_source = gr.Radio(
-                        choices=["Camera", "Upload"], value="Upload", label="Choose Image Source"
-                    )
-                    image_input = gr.Image(label="Image to verify", shape=(200, 200))
-                image_ref = gr.Image(label="Reference image", shape=(200, 200))
+                image_input = gr.Image(label="Image to verify", height=480)
+                image_ref = gr.Image(label="Reference image", height=480)
             with gr.Row():
-                image_load_button = gr.Button("Load")
-                image_gen_button = gr.Button("Generate (for testing purposes)")
+                image_source_button = gr.Button("Upload / Camera", variant="primary")
+                image_gen_button = gr.Button("Generate (for testing purposes)", variant="secondary")
         with gr.Tab("Detection"):
             with gr.Row():
-                gallery_ROI = gr.Gallery(label="ROIs", columns=5, object_fit="scale-down")
-                image_BB = gr.Image(label="Bounding boxes", shape=(200, 200))
-            image_detect_button = gr.Button("Detect")
+                gallery_ROI = gr.Gallery(label="ROIs", columns=5, object_fit="scale-down", height=480)
+                image_BB = gr.Image(label="Bounding boxes", height=480)
+            image_detect_button = gr.Button("Detect", variant="primary")
         with gr.Tab("Segmentation"):
             with gr.Row():
-                gallery_mROI = gr.Gallery(label="Masked ROIs", columns=5, object_fit="scale-down")
-                image_mFull = gr.Image(label="Bachground segmentations", shape=(200, 200))
-            image_segment_button = gr.Button("Segment")
+                gallery_mROI = gr.Gallery(label="Masked ROIs", columns=5, object_fit="scale-down", height=480)
+                image_mFull = gr.Image(label="Bachground segmentations", height=480)
+            image_segment_button = gr.Button("Segment", variant="primary")
         with gr.Tab("Verification"):
-            gallery_scores = gr.Gallery(label="Verification Scores", columns=5, object_fit="scale-down")
-            image_verify_button = gr.Button("Verify")
+            gallery_scores = gr.Gallery(
+                label="Verification Scores", columns=5, object_fit="scale-down", height=480
+            )
+            image_verify_button = gr.Button("Verify", variant="primary")
         with gr.Tab("Counting Helper"):
+            with gr.Column():
+                streaming_source = gr.Image(
+                    label="Input camera stream",
+                    source="upload",
+                    interactive=False,
+                    streaming=False,
+                    visible=False,
+                )
+                streaming_destination = gr.Image(label="Output result", height=480)
             with gr.Row():
-                streaming_source = gr.Image(label="Input camera stream", source="webcam", visible=False)
                 CountHelpBox = gr.Textbox(show_label=False)
-                streaming_destination = gr.Image(label="Output result")
+                stream_start_button = gr.Button("Start Streaming", variant="primary")
+                stream_stop_button = gr.Button("Stop Streaming and Load Image", variant="stop")
 
         with gr.Accordion("Logs"):
-            logBox = gr.Textbox(show_label=False)
+            gr.Textbox(demo_read_logs, every=1, show_label=False)
 
-        image_source.change(demo_choose_source, image_source, image_input)
-        image_load_button.click(demo_load_image, inputs=[image_input, image_ref], outputs=None)
+        image_source_button.click(demo_choose_source, None, image_input)
+        image_input.change(
+            lambda img, img_ref: demo_load_image(img, img_ref, image_input.label),
+            inputs=[image_input, image_ref],
+            outputs=None,
+        )
+        image_ref.change(
+            lambda img, img_ref: demo_load_image(img, img_ref, image_ref.label),
+            inputs=[image_input, image_ref],
+            outputs=None,
+        )
         image_gen_button.click(demo_gen_image, inputs=None, outputs=[image_input, image_ref])
         image_detect_button.click(demo_detect, None, [gallery_ROI, image_BB])
         image_segment_button.click(demo_segment, None, [gallery_mROI, image_mFull])
         image_verify_button.click(demo_verify, None, gallery_scores)
-        demo.queue()
-        demo.load(demo_init)
-        streaming_source.stream(
+        stream_start_button.click(demo_start_streaming, None, streaming_source)
+        stream_stop_button.click(demo_stop_streaming, streaming_source, [streaming_source, image_input])
+        streaming_source.change(
             demo_video_counter,
             streaming_source,
             [streaming_destination, CountHelpBox],
             show_progress="hidden",
         )
-        demo.load(demo_read_logs, None, logBox, every=1)
+        demo.load(demo_init)
+        demo.queue()
     return demo
 
 

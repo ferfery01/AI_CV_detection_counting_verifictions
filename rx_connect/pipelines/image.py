@@ -366,9 +366,7 @@ class RxImageVerify(RxImageSegment):
     def similarity_scores(self) -> np.ndarray:
         """Returns the similarity for all the ROIs."""
         if self._similarity_scores is None:
-            self._similarity_scores = self._similarity_fn(
-                [self.vectorized_ref], self.vectorized_ROIs
-            ).squeeze()
+            self._similarity_scores = self._similarity_fn([self.vectorized_ref], self.vectorized_ROIs).ravel()
         return self._similarity_scores
 
 
