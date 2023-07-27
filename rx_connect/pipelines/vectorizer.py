@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional, Union, cast
+from typing import Any, ClassVar, Dict, List, Optional, Union, cast, overload
 
 import cv2
 import numpy as np
@@ -44,6 +44,14 @@ class RxVectorizer(ABC):
 
     def __setstate__(self, state: Dict[str, Any]):
         self.__dict__.update(state)
+
+    @overload
+    def encode(self, images: List[np.ndarray]) -> List[np.ndarray]:
+        ...
+
+    @overload
+    def encode(self, images: np.ndarray) -> np.ndarray:
+        ...
 
     @timer()
     def encode(self, images: Union[np.ndarray, List[np.ndarray]]) -> Union[np.ndarray, List[np.ndarray]]:

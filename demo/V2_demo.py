@@ -7,7 +7,7 @@ import numpy as np
 from rx_connect import CACHE_DIR
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.generator import RxImageGenerator
-from rx_connect.pipelines.image import RxImage
+from rx_connect.pipelines.image import RxVision
 from rx_connect.pipelines.segment import RxSegmentation
 from rx_connect.pipelines.vectorizer import RxVectorizerColorhist
 from rx_connect.tools.logging import setup_logger
@@ -17,8 +17,8 @@ logger = setup_logger()
 log_file = CACHE_DIR / "demo_v2.log"
 logger.addHandler(logging.FileHandler(log_file))
 
-IMAGE_OBJ = RxImage()
-STREAM_OBJ = RxImage()
+IMAGE_OBJ = RxVision()
+STREAM_OBJ = RxVision()
 GENERATOR_OBJ = None
 CURRENT_SOURCE = "upload"
 

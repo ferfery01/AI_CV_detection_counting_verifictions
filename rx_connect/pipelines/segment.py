@@ -113,7 +113,7 @@ class RxSegmentation(RxBase):
 
 if __name__ == "__main__":
     from rx_connect.pipelines.detection import RxDetection
-    from rx_connect.pipelines.image import RxImage
+    from rx_connect.pipelines.image import RxVision
 
     # test example
     test_image_path = "/media/RxConnectShared/ePillID/pills/images/50090-0762_0_0.jpg"
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     segmentObj = RxSegmentation()
 
     # instantiate image object
-    countSegmentObj = RxImage()
+    countSegmentObj = RxVision()
 
     # Load the image and set the counter and segmenter objects
     countSegmentObj.load_image(test_image_path)

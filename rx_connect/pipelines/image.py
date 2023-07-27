@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union, cast
+from typing import Callable, List, Optional, Union, cast
 
 import cv2
 import numpy as np
@@ -22,15 +22,18 @@ from rx_connect.tools.logging import setup_logger
 logger = setup_logger()
 
 
-class RxImageBase:
-    """Base class for RxImage objects. This class implements the loading methods."""
+class RxVisionBase:
+    """Base class for RxVision objects. This class implements all the different loading methods."""
+
+    _image: Optional[np.ndarray] = None
+    _ref_image: Optional[np.ndarray] = None
 
     def __init__(self) -> None:
         self._reset()
 
-    def _reset(self):
-        self._image: Optional[np.ndarray] = None
-        self._ref_image: Optional[np.ndarray] = None
+    def _reset(self) -> None:
+        self._image = None
+        self._ref_image = None
 
     def load_from_camera(self) -> None:
         """Loads the image from default camera."""
@@ -59,7 +62,7 @@ class RxImageBase:
         else:
             raise TypeError(f"Image type {type(image)} not supported.")
 
-    def load_from_generator(self, generator_obj: RxImageGenerator, **kwargs: Dict[str, bool]) -> None:
+    def load_from_generator(self, generator_obj: RxImageGenerator, **kwargs: bool) -> None:
         """Loads the image from the given generator object.
 
         Args:
@@ -101,16 +104,20 @@ class RxImageBase:
         return cast(np.ndarray, self._image)
 
 
-class RxImageCount(RxImageBase):
-    """Image class for counting methods. This class inherits from RxImageBase for the loading methods."""
+class RxVisionDetect(RxVisionBase):
+    """Vision class for detecting all the pills in an image. This class inherits RxVisionBase for
+    all the loading methods.
+    """
+
+    _bounding_boxes: Optional[List[CounterModuleOutput]] = None
 
     def __init__(self) -> None:
         super().__init__()
         self._counterObj: Optional[RxDetection] = None
 
-    def _reset(self):
+    def _reset(self) -> None:
         super()._reset()
-        self._bounding_boxes: Optional[List[CounterModuleOutput]] = None
+        self._bounding_boxes = None
 
     def set_counter(self, counterObj: RxDetection) -> None:
         """Sets the counter object. Reset any existing results to None when there's a new counter.
@@ -123,6 +130,7 @@ class RxImageCount(RxImageBase):
 
     def visualize_ROIs(self, img_per_row: int = 5, labels: Optional[List[str]] = None) -> None:
         """Utility function to visualize cropped ROIs.
+
         First change the list into a list of list, then visualize.
 
         Args:
@@ -196,20 +204,24 @@ class RxImageCount(RxImageBase):
         return [self.image[y1:y2, x1:x2] for (x1, y1, x2, y2), _ in self.bounding_boxes]
 
 
-class RxImageSegment(RxImageCount):
-    """Image class for segmentation methods. This class inherits from RxImageCount for
-    the loading and counting methods.
+class RxVisionSegment(RxVisionDetect):
+    """Vision class for segmenting all the pills in an image. This class inherits RxVisionDetect for all
+    the loading and detection methods.
     """
+
+    _background_mask: Optional[np.ndarray] = None
+    _masked_ROIs: Optional[List[np.ndarray]] = None
+    _detail_ROI_seg: Optional[List[List[SegmentResult]]] = None
 
     def __init__(self) -> None:
         super().__init__()
         self._segmenterObj: Optional[RxSegmentation] = None
 
-    def _reset(self):
+    def _reset(self) -> None:
         super()._reset()
-        self._background_mask: Optional[np.ndarray] = None
-        self._masked_ROIs: Optional[List[np.ndarray]] = None
-        self._detail_ROI_seg: Optional[List[List[SegmentResult]]] = None
+        self._background_mask = None
+        self._masked_ROIs = None
+        self._detail_ROI_seg = None
 
     def set_segmenter(self, segmenterObj: RxSegmentation) -> None:
         """Sets the segmenter object. Reset any existing results to None when there's a new segmenter.
@@ -225,8 +237,7 @@ class RxImageSegment(RxImageCount):
         ts.show([self.image, self.background_segment])
 
     def visualize_masked_ROIs(self, img_per_row: int = 5) -> None:
-        """
-        Visualize the cropped segmentations.
+        """Visualize the cropped segmentations.
 
         Args:
             img_per_row (int): The number of images per row.
@@ -298,21 +309,24 @@ class RxImageSegment(RxImageCount):
         return self._detail_ROI_seg
 
 
-class RxImageVerify(RxImageSegment):
-    """Image class for verification methods. This class inherits from RxImageCount for the
-    loading and counting methods.
+class RxVisionVerify(RxVisionSegment):
+    """Vision class for verification methods. This class inherits from RxVisionSegment for the
+    loading, detection, and segmentation methods.
     """
+
+    _vectorized_ROIs: Optional[List[np.ndarray]] = None
+    _vectorized_ref: Optional[np.ndarray] = None
+    _similarity_scores: Optional[np.ndarray] = None
 
     def __init__(self) -> None:
         super().__init__()
         self._vectorizerObj: Optional[RxVectorizer] = None
-        self._reset()
 
-    def _reset(self):
+    def _reset(self) -> None:
         super()._reset()
-        self._vectorized_ROIs: Optional[List[np.ndarray]] = None
-        self._vectorized_ref: Optional[np.ndarray] = None
-        self._similarity_scores: Optional[np.ndarray] = None
+        self._vectorized_ROIs = None
+        self._vectorized_ref = None
+        self._similarity_scores = None
 
     def set_vectorizer(
         self, vectorizerObj: RxVectorizer, similarity_fn: Callable[..., np.ndarray] = cosine_similarity
@@ -321,7 +335,7 @@ class RxImageVerify(RxImageSegment):
 
         Args:
             vectorizerObj (vectorizer): Vectorizer object.
-            similary_fn (function) :  Callable[[...], np.ndarray]
+            similary_fn (function): Similarity function to compare the reference image and the ROIs.
         """
         self._vectorizerObj = vectorizerObj
         self._reset()
@@ -370,9 +384,16 @@ class RxImageVerify(RxImageSegment):
         return self._similarity_scores
 
 
-class RxImage(RxImageVerify):
-    """Image class containing all the methods required for loading pill images, detection,
-    segmentation, and verification.
+class RxVision(RxVisionVerify):
+    """The Vision class encapsulates the essential methods for processing and analyzing image data related to
+    pill detection and segmentation.
+
+    Key Features:
+    - Image Loading: Provides functionality for efficiently loading image files.
+    - Pill Detection: Implements sophisticated techniques to accurately detect pills within an image.
+    - Pill Segmentation: Offers tools for segmenting detected pills for further analysis or manipulation.
+    - Pill Verification: Includes methods for comparing and verifying each detected pill against a reference image.
+        This allows for identification and validation of the pill.
     """
 
     def __init__(self) -> None:

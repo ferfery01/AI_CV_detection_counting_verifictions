@@ -75,12 +75,12 @@ class RxDetection(RxBase):
 
 if __name__ == "__main__":
     from rx_connect import SHARED_EPILL_DATA_DIR
-    from rx_connect.pipelines.image import RxImage
+    from rx_connect.pipelines.image import RxVision
 
     img_path = f"{SHARED_EPILL_DATA_DIR}/images/68258-6044_0_1.jpg"
 
     # Test the class
-    image_obj = RxImage()
+    image_obj = RxVision()
     image_obj.load_image(img_path)
 
     pill_count_obj = RxDetection()

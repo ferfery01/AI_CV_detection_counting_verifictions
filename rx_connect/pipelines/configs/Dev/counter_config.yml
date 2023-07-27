@@ -1,6 +1,6 @@
 ---
 detection:
-    model: yolo_nas_l
+    model: yolo_nas_s
     model_path: /media/RxConnectShared/checkpoints/counter/best_model.pth
     classes:
         - Pill
