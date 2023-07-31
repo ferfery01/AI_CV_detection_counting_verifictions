@@ -9,7 +9,7 @@ from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.pipelines.image import RxVision
 from rx_connect.pipelines.segment import RxSegmentation
-from rx_connect.pipelines.vectorizer import RxVectorizerColorhist
+from rx_connect.pipelines.vectorizer import RxVectorizerML
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.timers import timer
 
@@ -44,7 +44,7 @@ def demo_init() -> None:
         segmentObj = RxSegmentation()
 
         logger.info("\tPreparing vectorization tool...")
-        vectorizerObj = RxVectorizerColorhist()
+        vectorizerObj = RxVectorizerML()
 
         logger.info("\tPreparing image pipeline...")
         IMAGE_OBJ.set_counter(counterObj)
