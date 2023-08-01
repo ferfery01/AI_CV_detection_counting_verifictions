@@ -1,0 +1,7 @@
+---
+train: /media/RxConnectShared/synthetic_seg_data/datasets/train/images  # train images (relative to 'path') 128 images
+val: /media/RxConnectShared/synthetic_seg_data/datasets/val/images  # val images (relative to 'path') 128 images
+test: /media/RxConnectShared/synthetic_seg_data/datasets/test/images # test images
+# Classes
+names:
+    0: pill

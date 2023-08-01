@@ -31,6 +31,7 @@ def mask2polygon(
     mask_output_file_name = pill_mask_paths.stem
     mask_data = np.load(pill_mask_paths)
     mask_pill_num = np.max(mask_data)
+    length, width = mask_data.shape[0], mask_data.shape[1]
 
     string_contrainer = ""
     for i in range(1, mask_pill_num + 1):  # the mask idx start from 1 to n_pills
@@ -50,7 +51,7 @@ def mask2polygon(
 
         string_contrainer += "0 "  # For now, each contour all have label index as 0
         for item in approx_contours:
-            string_contrainer += f"{item[0]} {item[1]} "
+            string_contrainer += f"{item[0]/width} {item[1]/length} "
         string_contrainer += "\n"
 
     # save the polygon xy coordinates to the txt file

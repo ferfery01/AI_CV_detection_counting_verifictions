@@ -10,8 +10,6 @@ from skimage import io
 from sklearn.metrics.pairwise import cosine_similarity
 
 from rx_connect.core.types.detection import CounterModuleOutput
-from rx_connect.core.types.segment import SegmentResult
-from rx_connect.core.utils.sam_utils import get_best_mask
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.pipelines.segment import RxSegmentation
@@ -209,9 +207,9 @@ class RxVisionSegment(RxVisionDetect):
     the loading and detection methods.
     """
 
-    _background_mask: Optional[np.ndarray] = None
+    _full_mask: Optional[np.ndarray] = None
     _masked_ROIs: Optional[List[np.ndarray]] = None
-    _detail_ROI_seg: Optional[List[List[SegmentResult]]] = None
+    _detail_ROI_seg: Optional[List[np.ndarray]] = None
 
     def __init__(self) -> None:
         super().__init__()
@@ -219,7 +217,7 @@ class RxVisionSegment(RxVisionDetect):
 
     def _reset(self) -> None:
         super()._reset()
-        self._background_mask = None
+        self._full_mask = None
         self._masked_ROIs = None
         self._detail_ROI_seg = None
 
@@ -234,7 +232,7 @@ class RxVisionSegment(RxVisionDetect):
 
     def visualize_background(self) -> None:
         """Visualize the background segment."""
-        ts.show([self.image, self.background_segment])
+        ts.show([self.image, self.segment])
 
     def visualize_masked_ROIs(self, img_per_row: int = 5) -> None:
         """Visualize the cropped segmentations.
@@ -250,7 +248,7 @@ class RxVisionSegment(RxVisionDetect):
         ts.show(show_img_reordered)
 
     @property
-    def background_segment(self) -> np.ndarray:
+    def segment(self) -> np.ndarray:
         """
         Run full segmentation with SAM to separate forground/background.
         From the segmentation results, choose the one containing all pills.
@@ -258,24 +256,45 @@ class RxVisionSegment(RxVisionDetect):
         Returns:
             np.ndarray: The mask that separates the background and all the pills.
         """
-        if self._background_mask is None:
+        if self._full_mask is None:
             logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
-            seg_mask_full = cast(RxSegmentation, self._segmenterObj).segment_full(self.image)
-            self._background_mask = get_best_mask(seg_mask_full).astype(np.uint8)
-        return self._background_mask
+            mask = cast(RxSegmentation, self._segmenterObj).segment_full(self.image)
+            # x = column, y = row, so need to reverse the order
+            self._full_mask = cv2.resize(mask, self.image.shape[:2][::-1])
+
+        return self._full_mask
 
     @property
     def cropped_masks(self) -> List[np.ndarray]:
         """
-        Return the cropped mask from the full background mask.
-        # TODO: Replace the background (result of SAM) with instance segmentation.
+        Return the cropped mask from the full segment mask.
 
         Returns:
-            List[np.ndarray]: The cropped masks from the full background mask
+            List[np.ndarray]: The cropped masks from the full segment mask
         """
-
         bbox_xyxy_list = [item.bbox for item in self.bounding_boxes]
-        cropped_masks = [self.background_segment[y1:y2, x1:x2] for (x1, y1, x2, y2) in bbox_xyxy_list]
+        cropped_masks = [self.segment[y1:y2, x1:x2] for (x1, y1, x2, y2) in bbox_xyxy_list]
+
+        if self._segmenterObj is not None and self._segmenterObj._model_type == "YOLO":
+            all_cropped_masks = []
+            for cropped_mask in cropped_masks:
+                # Filter out the value 0 from the array
+                values, counts = np.unique(cropped_mask, return_counts=True)
+                unique_values = [v for v in values if v != 0]
+                unique_counts = [c for (c, v) in zip(counts, values) if v != 0]
+
+                if len(unique_values) == 0:
+                    logger.info("detection bbox does not find any instance for segmentation.")
+                    all_cropped_masks.append(np.ones(cropped_mask.shape).astype(np.int8))
+                else:
+                    # Find the most occurred value besides 0
+                    most_occurred_value = unique_values[np.argmax(unique_counts)]
+
+                    # Set all other pixels to 0 except for the pixels with the most value
+                    all_cropped_masks.append(np.array(cropped_mask == most_occurred_value, dtype=np.int8))
+
+            cropped_masks = all_cropped_masks
+
         return cropped_masks
 
     @property
@@ -295,16 +314,16 @@ class RxVisionSegment(RxVisionDetect):
         return self._masked_ROIs
 
     @property
-    def ROI_segmentation(self) -> List[List[SegmentResult]]:
+    def ROI_segmentation(self) -> List[np.ndarray]:
         """Check if the ROI segmentation has been produced. If not, segment before returning it.
 
         Returns:
-            List[List[SegmentResult]]: Segmentation results for each ROI.
+            List[np.ndarray]: Segmentation results for each ROI.
         """
         if self._detail_ROI_seg is None:
             logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
             self._detail_ROI_seg = [
-                cast(RxSegmentation, self._segmenterObj).segment_ROI(ROI) for ROI in self.ROIs
+                cast(RxSegmentation, self._segmenterObj).segment_full(ROI) for ROI in self.ROIs
             ]
         return self._detail_ROI_seg
 
