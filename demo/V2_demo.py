@@ -1,10 +1,11 @@
 import logging
 from typing import Any, Dict, List, Tuple, cast
 
+import cv2
 import gradio as gr
 import numpy as np
 
-from rx_connect import CACHE_DIR
+from rx_connect import CACHE_DIR, PIPELINES_DIR
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.pipelines.image import RxVision
@@ -41,7 +42,7 @@ def demo_init() -> None:
         counterObj = RxDetection()
 
         logger.info("\tPreparing segmentation tool...")
-        segmentObj = RxSegmentation()
+        segmentObj = RxSegmentation(cfg=f"{PIPELINES_DIR}/configs/Dev/segment_SAM_config.yml")
 
         logger.info("\tPreparing vectorization tool...")
         vectorizerObj = RxVectorizerML()
@@ -107,7 +108,7 @@ def demo_segment() -> Tuple[List[np.ndarray], np.ndarray]:
     """
     logger.info("Segmentation started...")
     with timer() as t:
-        mROI, mFull = IMAGE_OBJ.masked_ROIs, IMAGE_OBJ.background_segment
+        mROI, mFull = IMAGE_OBJ.masked_ROIs, IMAGE_OBJ.segment
     logger.info(f"...Segmentation finished. Spent {t.duration:.2f} seconds.")
     return mROI, mFull * 255
 
@@ -151,12 +152,24 @@ def demo_stop_streaming(current_frame: np.ndarray) -> Tuple[gr.update, np.ndarra
     )
 
 
-def demo_video_counter(frame: np.ndarray) -> Tuple[np.ndarray, str]:
+def demo_video_counter(dosage_str: str, frame: np.ndarray) -> Tuple[np.ndarray, str]:
     """
     Demo event function - video counter utility.
     """
+    dosage = int(dosage_str)
     STREAM_OBJ.load_image(frame)
-    return STREAM_OBJ.draw_bounding_boxes(), f"Current pill count: {STREAM_OBJ.pill_count}."
+    detection = STREAM_OBJ.draw_bounding_boxes()
+    msg = f"Current count: {STREAM_OBJ.pill_count}.\n"
+    if dosage != STREAM_OBJ.pill_count:
+        cv2.rectangle(detection, (0, 0), detection.shape[1::-1], (255, 0, 0), 5)
+        if dosage > STREAM_OBJ.pill_count:
+            msg += f"Add {dosage - STREAM_OBJ.pill_count} pills."
+        elif dosage < STREAM_OBJ.pill_count:
+            msg += f"Remove {STREAM_OBJ.pill_count - dosage} pills."
+    else:
+        cv2.rectangle(detection, (0, 0), detection.shape[1::-1], (0, 255, 0), 5)
+
+    return detection, msg
 
 
 def demo_read_logs() -> str:
@@ -206,9 +219,10 @@ def create_demo() -> gr.Blocks:
                 )
                 streaming_destination = gr.Image(label="Output result", height=480)
             with gr.Row():
-                CountHelpBox = gr.Textbox(show_label=False)
+                CountHelpTargetBox = gr.Textbox(label="Dosage", value="30")
                 stream_start_button = gr.Button("Start Streaming", variant="primary")
                 stream_stop_button = gr.Button("Stop Streaming and Load Image", variant="stop")
+                CountHelpOutputBox = gr.Textbox(show_label=False, lines=3)
 
         with gr.Accordion("Logs"):
             gr.Textbox(demo_read_logs, every=1, show_label=False)
@@ -232,8 +246,8 @@ def create_demo() -> gr.Blocks:
         stream_stop_button.click(demo_stop_streaming, streaming_source, [streaming_source, image_input])
         streaming_source.change(
             demo_video_counter,
-            streaming_source,
-            [streaming_destination, CountHelpBox],
+            [CountHelpTargetBox, streaming_source],
+            [streaming_destination, CountHelpOutputBox],
             show_progress="hidden",
         )
         demo.load(demo_init)

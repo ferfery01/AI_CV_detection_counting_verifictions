@@ -162,7 +162,7 @@ class RxVisionDetect(RxVisionBase):
         """Utility function to draw bounding boxes on the image."""
         img_bb = self.image.copy()
         for (x1, y1, x2, y2), _ in self.bounding_boxes:
-            cv2.rectangle(img_bb, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            cv2.rectangle(img_bb, (x1, y1), (x2, y2), (0, 0, 255), 2)
         return img_bb
 
     def visualize_bounding_boxes(self) -> None:
