@@ -19,7 +19,7 @@ logger = setup_logger()
 
 YOLO_LABELS = "labels"
 SEGMENTATION_LABELS = "comp_masks"
-COCO_LABELS = "COCO_txt"
+COCO_LABELS = "COCO"
 
 
 class PillMaskPaths(NamedTuple):
