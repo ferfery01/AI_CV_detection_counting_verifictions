@@ -30,8 +30,12 @@ class RxVisionBase:
         self._reset()
 
     def _reset(self) -> None:
-        self._image = None
-        self._ref_image = None
+        """
+        Clear any results from previous runs.
+        Called when old results becomes invalidated; e.g. new image loaded, new reference image,
+        new processing tool objects...etc.
+        """
+        pass
 
     def load_from_camera(self) -> None:
         """Loads the image from default camera."""
@@ -39,6 +43,18 @@ class RxVisionBase:
         _, self._image = cv2.VideoCapture(0).read()
 
     def load_image(self, image: Union[np.ndarray, torch.Tensor, Image.Image, str, Path]) -> None:
+        """Set the tray-view image."""
+        self._reset()
+        self._image = self._image_loader(image)
+
+    def load_ref_image(self, image: Union[np.ndarray, torch.Tensor, Image.Image, str, Path]) -> None:
+        """Set the reference image."""
+        self._reset()
+        self._ref_image = self._image_loader(image)
+
+    def _image_loader(
+        self, image: Union[np.ndarray, torch.Tensor, Image.Image, str, Path]
+    ) -> Optional[np.ndarray]:
         """Loads the image from the given image object. The image object can be a numpy array,
         torch tensor, PIL image, or a path to an image. The path can be a local path or a remote
         path. If the path is remote, the image is downloaded to the cache directory. The image is
@@ -47,16 +63,15 @@ class RxVisionBase:
         Args:
             image (Union[np.ndarray, torch.Tensor, Image]): Image as image object.
         """
-        self._reset()
         if isinstance(image, np.ndarray):
-            self._image = image
+            return image
         elif isinstance(image, torch.Tensor):
-            self._image = image.numpy()
+            return image.numpy()
         elif isinstance(image, Image.Image):
-            self._image = np.array(image)
+            return np.array(image)
         elif isinstance(image, (str, Path)):
             image_path = fetch_from_remote(image)
-            self._image = io.imread(image_path)
+            return io.imread(image_path)
         else:
             raise TypeError(f"Image type {type(image)} not supported.")
 
@@ -70,10 +85,6 @@ class RxVisionBase:
         self._reset()
         self._image, *_ = generator_obj.generate(**kwargs)
         self.load_ref_image(generator_obj.reference_pills[0])
-
-    def load_ref_image(self, ref_image: np.ndarray) -> None:
-        """Set the reference image."""
-        self._ref_image = ref_image
 
     def visualize(self) -> None:
         """Utility function to visualize image stored in the object."""
