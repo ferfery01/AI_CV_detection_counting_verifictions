@@ -101,7 +101,7 @@ def main(download_dir: str, indices: Tuple[int, int]) -> None:
         folder_name = parsed_url.path.split("/")[-3]
 
         # Create project folder if it doesn't exist
-        image_dir = Path(download_dir) / folder_name
+        image_dir = Path(download_dir) / folder_name / "images"
         image_dir.mkdir(parents=True, exist_ok=True)
 
         img_info = []

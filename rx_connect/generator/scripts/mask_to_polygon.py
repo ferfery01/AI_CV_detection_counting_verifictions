@@ -62,7 +62,7 @@ def mask_to_polygon(mask_path: Path, output_path: Path, eps: float) -> None:
 
         # Corner Case: OpenCV detects Contour and Noise.
         # Take the contour with the max number of points, bc noise have less points than contours
-        contours_best = max(contours, key=len)[0] if len(contours) > 1 else contours[0]
+        contours_best = max(contours, key=len) if len(contours) > 1 else contours[0]
 
         # Approximate the contour with a polygon
         poly_approx = approximate_contours(contours_best, eps)
