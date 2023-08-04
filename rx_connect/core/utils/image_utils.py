@@ -14,7 +14,7 @@ from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
 
-IMAGE_EXTENSIONS: List[str] = [".jpg", ".jpeg", ".png", ".cr2", ".wmv"]
+IMAGE_EXTENSIONS: List[str] = [".jpg", ".jpeg", ".png", ".cr2"]
 """The list of image file extensions.
 """
 

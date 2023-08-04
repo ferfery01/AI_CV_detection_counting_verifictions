@@ -4,11 +4,11 @@ from typing import List, NamedTuple, Union
 
 import click
 import numpy as np
-import pandas as pd
 from skimage import io
 from tqdm import tqdm
 
 from rx_connect.core.utils.str_utils import str_to_hash
+from rx_connect.dataset.utils import load_consumer_image_df_by_layout
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.image import RxVision
 from rx_connect.tools.logging import setup_logger
@@ -100,16 +100,7 @@ def main(
     min_area = min_bg_height * min_bg_width
 
     # Load all the appropriate consumer grade images
-    try:
-        df = pd.read_csv(data_dir / "consumer_grade_images.csv")
-        df = df[df.Layout == "C3PI_Test"]
-    except FileNotFoundError as e:
-        logger.error(
-            "Make sure to download the `directory_consumer_grade_images.xlsx` from "
-            "https://data.lhncbc.nlm.nih.gov/public/Pills/directory_consumer_grade_images.xlsx "
-            f"and save it as csv file in {data_dir}."
-        )
-        raise e
+    df = load_consumer_image_df_by_layout(data_dir, "C3PI_Test")
 
     # Initialize the Detection and Vision objects
     detection_obj = RxDetection()
