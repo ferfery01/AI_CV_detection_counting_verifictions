@@ -1,4 +1,3 @@
-import random
 from pathlib import Path
 from typing import List, NamedTuple, Union
 
@@ -7,6 +6,7 @@ import numpy as np
 from skimage import io
 from tqdm import tqdm
 
+from rx_connect.core.images.io import load_image
 from rx_connect.core.utils.str_utils import str_to_hash
 from rx_connect.dataset.utils import load_consumer_image_df_by_layout
 from rx_connect.pipelines.detection import RxDetection
@@ -35,23 +35,6 @@ class BoundingBoxCoordinates(NamedTuple):
     x_max: int
     y_min: int
     y_max: int
-
-
-def load_image(image_path: Union[str, Path]) -> np.ndarray:
-    """Loads an image from the given path.
-
-    For images with 4 channels, the alpha channel is removed.
-    For images with multiple channels i.e. a video, a random frame is selected.
-    """
-    image = io.imread(image_path)
-
-    if len(image.shape) == 3 and image.shape[-1] == 4:
-        image = image[:, :, :3]
-    elif len(image.shape) == 4:
-        idx = random.randint(0, image.shape[0])
-        image = image[idx, :, :, :3]
-
-    return image
 
 
 def get_extreme_points(bounding_boxes: List[List[int]]) -> BoundingBoxCoordinates:

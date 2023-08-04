@@ -9,7 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm, trange
 
-from rx_connect.core.utils.image_utils import IMAGE_EXTENSIONS, download_image
+from rx_connect.core.images.io import IMAGE_EXTENSIONS, download_image
 from rx_connect.dataset.utils import LAYOUTS, load_consumer_image_df_by_layout
 from rx_connect.tools.logging import setup_logger
 

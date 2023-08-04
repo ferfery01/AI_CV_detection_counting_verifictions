@@ -8,11 +8,8 @@ from joblib import Parallel, delayed
 from skimage.io import imread
 from tqdm import tqdm
 
+from rx_connect.core.images.grid import create_square_grid, unpack_images_from_grid
 from rx_connect.core.utils.func_utils import batch_generator
-from rx_connect.core.utils.image_utils import (
-    create_square_grid,
-    unpack_images_from_grid,
-)
 from rx_connect.generator.grabcut_utils import (
     apply_grabcut,
     create_initial_mask_for_grabcut,
