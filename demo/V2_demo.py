@@ -11,10 +11,9 @@ from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.pipelines.image import RxVision
 from rx_connect.pipelines.segment import RxSegmentation
 from rx_connect.pipelines.vectorizer import RxVectorizerML
-from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.timers import timer
 
-logger = setup_logger()
+logger = logging.Logger("Demo_logger")
 log_file = CACHE_DIR / "demo_v2.log"
 logger.addHandler(logging.FileHandler(log_file))
 
@@ -219,7 +218,7 @@ def create_demo() -> gr.Blocks:
                 )
                 streaming_destination = gr.Image(label="Output result", height=480)
             with gr.Row():
-                CountHelpTargetBox = gr.Textbox(label="Dosage", value="30")
+                CountHelpTargetBox = gr.Textbox(label="Quantity", value="30")
                 stream_start_button = gr.Button("Start Streaming", variant="primary")
                 stream_stop_button = gr.Button("Stop Streaming and Load Image", variant="stop")
                 CountHelpOutputBox = gr.Textbox(show_label=False, lines=3)

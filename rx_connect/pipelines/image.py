@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, List, Optional, Union, cast
+from typing import List, Optional, Union, cast
 
 import cv2
 import numpy as np
@@ -7,7 +7,6 @@ import torch
 import torchshow as ts
 from PIL import Image
 from skimage import io
-from sklearn.metrics.pairwise import cosine_similarity
 
 from rx_connect.core.types.detection import CounterModuleOutput
 from rx_connect.pipelines.detection import RxDetection
@@ -356,20 +355,14 @@ class RxVisionVerify(RxVisionSegment):
         self._vectorized_ref = None
         self._similarity_scores = None
 
-    def set_vectorizer(
-        self, vectorizerObj: RxVectorizer, similarity_fn: Callable[..., np.ndarray] = cosine_similarity
-    ) -> None:
+    def set_vectorizer(self, vectorizerObj: RxVectorizer) -> None:
         """Sets the vectorizer object. Reset any existing results to None when there's a new vectorizer.
 
         Args:
             vectorizerObj (vectorizer): Vectorizer object.
-            similary_fn (function): Similarity function to compare the reference image and the ROIs.
         """
         self._vectorizerObj = vectorizerObj
         self._reset()
-
-        # Default similarity function is cosine similarity
-        self._similarity_fn = similarity_fn
 
     def visualize_similarity_scores(self, img_per_col: int = 5) -> None:
         """Utility function to visualize similarity scores along with ROIs.
@@ -401,14 +394,19 @@ class RxVisionVerify(RxVisionSegment):
         """
         if self._vectorized_ROIs is None:
             assert self._vectorizerObj is not None, "Vectorizer object not set."
-            self._vectorized_ROIs = self._vectorizerObj.encode(self.masked_ROIs)
+            self._vectorized_ROIs = self._vectorizerObj.encode(
+                self.masked_ROIs if self._vectorizerObj.require_masked_input else self.ROIs
+            )
         return self._vectorized_ROIs
 
     @property
     def similarity_scores(self) -> np.ndarray:
         """Returns the similarity for all the ROIs."""
         if self._similarity_scores is None:
-            self._similarity_scores = self._similarity_fn([self.vectorized_ref], self.vectorized_ROIs).ravel()
+            assert self._vectorizerObj is not None, "Vectorizer object not set."
+            self._similarity_scores = self._vectorizerObj._similarity_fn(
+                [self.vectorized_ref], self.vectorized_ROIs
+            ).ravel()
         return self._similarity_scores
 
 

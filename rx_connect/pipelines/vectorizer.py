@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional, Union, cast, overload
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Union, cast, overload
 
 import albumentations as A
 import cv2
 import numpy as np
 import torch
 from albumentations.pytorch.transforms import ToTensorV2
-from sklearn.metrics.pairwise import euclidean_distances
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from vlad import VLAD
 
 from rx_connect import CACHE_DIR, SHARED_REMOTE_CKPT_DIR
@@ -21,22 +21,60 @@ from rx_connect.verification.classification.model import EmbeddingModel
 logger = setup_logger()
 
 
+def custom_similarity_fn_L2(v1: np.ndarray, v2: np.ndarray) -> np.ndarray:
+    """
+    Calculates L2 norm in range [0,1].
+    Original output range of Euclidean distances is [2, 0] (lower means more similar).
+    """
+    d = euclidean_distances(v1, v2)
+    return 1 - d / 2
+
+
+def custom_similarity_fn_CS_LN(v1: np.ndarray, v2: np.ndarray) -> np.ndarray:
+    """
+    Calculates Cosine Silimarity in range [0,1]. Similarity is linearly projected to the output range.
+    Original output range is [1, -1] (higher means more similar).
+    """
+    d = cosine_similarity(v1, v2)
+    return d / 2 + 0.5
+
+
+def custom_similarity_fn_CS_ReLU(v1: np.ndarray, v2: np.ndarray) -> np.ndarray:
+    """
+    Calculates Cosine Silimarity in range [0,1]. Similarity is non-linearly projected to the output range.
+    Original output range is [1, -1] (higher means more similar).
+    """
+    d = cosine_similarity(v1, v2)
+    d[d < 0] = 0
+    return d
+
+
 class RxVectorizer(ABC):
     def __init__(
         self,
         model_path: Optional[Union[str, Path]] = None,
         device: Union[str, torch.device] = torch.device("cpu"),
+        require_masked_input: bool = True,
+        similarity_fn: Callable[..., np.ndarray] = custom_similarity_fn_CS_ReLU,
     ) -> None:
         """Initializes the RxVectorizer object.
 
         Args:
             model_path (str): Path to the vectorizer model.
             device (str, torch.device): Device to run the model on.
+            requires_masked_input (bool):
+                Whether the input should be masked ROIs (or the raw ROIs).
+                Default to use masked input.
+            similarity_fn (callable):
+                Function to compare result vectors against reference each other.
+                Default to use cosine similarity.
 
         Raises:
             AssertionError: If the model path does not exist.
         """
         self._device = device
+        self._require_masked_input = require_masked_input
+        self._similarity_fn = similarity_fn
         if model_path is not None:
             # If remote model path is provided, fetch the model from the remote
             self._model_path = fetch_from_remote(model_path, cache_dir=CACHE_DIR / "vectorization")
@@ -79,6 +117,7 @@ class RxVectorizer(ABC):
             if images.ndim == 3:
                 return self(images)
             assert images.ndim == 4, "Images must be 3-dimensional (single) or 4-dimensional (stacked)."
+
         return [self(image) for image in images]
 
     def __getstate__(self) -> Dict[str, Any]:
@@ -89,6 +128,16 @@ class RxVectorizer(ABC):
         """Restore the state of the object from pickling."""
         self.__dict__.update(state)
 
+    @property
+    def require_masked_input(self) -> bool:
+        """Allow "getter" (but not "setter")."""
+        return self._require_masked_input
+
+    @property
+    def similarity_fn(self) -> Callable[..., np.ndarray]:
+        """Allow "getter" (but not "setter")."""
+        return self._similarity_fn
+
 
 class RxVectorizerSift(RxVectorizer):
     num_features: ClassVar[int] = 1000
@@ -96,6 +145,8 @@ class RxVectorizerSift(RxVectorizer):
     def __init__(
         self,
         model_path: Union[str, Path] = f"{SHARED_REMOTE_CKPT_DIR}/verification/vlad_1000_rn_16_v1.pkl",
+        require_masked_input: bool = True,
+        similarity_fn: Callable[..., np.ndarray] = custom_similarity_fn_CS_ReLU,
     ) -> None:
         """Initializes the RxVectorizerSift object.
 
@@ -105,7 +156,11 @@ class RxVectorizerSift(RxVectorizer):
         Raises:
             AssertionError: If the model path does not exist.
         """
-        super().__init__(model_path)
+        super().__init__(
+            model_path=model_path,
+            require_masked_input=require_masked_input,
+            similarity_fn=similarity_fn,
+        )
 
     def _load_model(self) -> None:
         """Loads the VLAD model from the given path."""
@@ -138,6 +193,21 @@ class RxVectorizerSift(RxVectorizer):
 
 
 class RxVectorizerColorhist(RxVectorizer):
+    def __init__(
+        self,
+        require_masked_input: bool = True,
+        similarity_fn: Callable[..., np.ndarray] = custom_similarity_fn_CS_ReLU,
+    ) -> None:
+        """
+        Initializes the RxVectorizerColorhist object.
+        Requires no model file. Default to use masked input and cosine similarity function.
+        """
+        super().__init__(
+            model_path=None,
+            require_masked_input=require_masked_input,
+            similarity_fn=similarity_fn,
+        )
+
     def _load_model(self) -> None:
         pass
 
@@ -165,6 +235,21 @@ class RxVectorizerColorhist(RxVectorizer):
 
 
 class RxVectorizerColorMomentHash(RxVectorizer):
+    def __init__(
+        self,
+        require_masked_input: bool = True,
+        similarity_fn: Callable[..., np.ndarray] = custom_similarity_fn_L2,
+    ) -> None:
+        """
+        Initializes the RxVectorizerColorhist object.
+        Requires no model file. Default to use masked input and L2 distance function.
+        """
+        super().__init__(
+            model_path=None,
+            require_masked_input=require_masked_input,
+            similarity_fn=similarity_fn,
+        )
+
     def _load_model(self) -> None:
         pass
 
@@ -181,10 +266,23 @@ class RxVectorizerColorMomentHash(RxVectorizer):
 
 
 class RxVectorizerDB(RxVectorizer):
+    def __init__(
+        self,
+        model_path: Union[str, Path],
+        similarity_fn: Callable[..., np.ndarray] = custom_similarity_fn_CS_ReLU,
+    ):
+        """The hidden attribures should be passed to the vectorDB object."""
+        super().__init__(
+            model_path=model_path,
+            require_masked_input=False,  # to be overwritten by self._load_model()
+            similarity_fn=similarity_fn,
+        )
+
     def _load_model(self) -> None:
         loaded_model = read_pickle(self._model_path)
         self._model = cast(np.ndarray, loaded_model["vectorSpace"])
         self._preprocessor = loaded_model["vectorizer"]()
+        self._require_masked_input = cast(RxVectorizer, self._preprocessor)._require_masked_input
 
     def _preprocess(self, image: np.ndarray) -> np.ndarray:
         try:
@@ -212,8 +310,15 @@ class RxVectorizerML(RxVectorizer):
         self,
         model_path: Union[str, Path] = f"{SHARED_REMOTE_CKPT_DIR}/verification/resnet_34_GAvP.pth",
         device: Union[str, torch.device] = "cpu",
+        require_masked_input: bool = False,
+        similarity_fn: Callable[..., np.ndarray] = custom_similarity_fn_CS_ReLU,
     ) -> None:
-        super().__init__(model_path, device)
+        super().__init__(
+            model_path=model_path,
+            device=device,
+            require_masked_input=require_masked_input,
+            similarity_fn=similarity_fn,
+        )
 
         # Define the pre-processing transforms
         self._transforms = A.Compose(
@@ -253,10 +358,3 @@ class RxVectorizerML(RxVectorizer):
         # Add batch dimension and move to device
         image_tensor = image_tensor.unsqueeze(0).to(self._device)
         return self._model(image_tensor).cpu().detach().numpy().flatten()
-
-
-def custom_similarity_fn_L2(v1: np.ndarray, v2: np.ndarray) -> np.ndarray:
-    """Calculates L2 norm in range [0,1]"""
-
-    d = euclidean_distances(v1, v2)
-    return 1 - d / 2
