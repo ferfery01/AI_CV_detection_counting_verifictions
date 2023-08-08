@@ -98,8 +98,8 @@ class RxVisionBase:
         Returns:
             np.ndarray: Loaded reference image.
         """
-        logger.assertion(self._ref_image is not None, "Reference image not loaded.")
-        return cast(np.ndarray, self._ref_image)
+        assert self._ref_image is not None, "Reference image not loaded."
+        return self._ref_image
 
     @property
     def image(self) -> np.ndarray:
@@ -109,8 +109,8 @@ class RxVisionBase:
         Returns:
             np.ndarray: Loaded image.
         """
-        logger.assertion(self._image is not None, "Image not loaded.")  # type: ignore
-        return cast(np.ndarray, self._image)
+        assert self._image is not None, "Image not loaded."
+        return self._image
 
 
 class RxVisionDetect(RxVisionBase):
@@ -190,8 +190,8 @@ class RxVisionDetect(RxVisionBase):
             List[CounterModuleOutput]: Bounding boxes. Format: [((X1, Y1, X2, Y2), score), ...]
         """
         if self._bounding_boxes is None:
-            logger.assertion(self._counterObj is not None, "Counter object not set.")
-            self._bounding_boxes = cast(RxDetection, self._counterObj).count(self.image)
+            assert self._counterObj is not None, "Counter object not set."
+            self._bounding_boxes = self._counterObj.count(self.image)
         return self._bounding_boxes
 
     @property
@@ -268,8 +268,8 @@ class RxVisionSegment(RxVisionDetect):
             np.ndarray: The mask that separates the background and all the pills.
         """
         if self._full_mask is None:
-            logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
-            mask = cast(RxSegmentation, self._segmenterObj).segment_full(self.image)
+            assert self._segmenterObj is not None, "Segmenter object not set."
+            mask = self._segmenterObj.segment_full(self.image)
             # x = column, y = row, so need to reverse the order
             self._full_mask = cv2.resize(mask, self.image.shape[:2][::-1])
 
@@ -332,10 +332,8 @@ class RxVisionSegment(RxVisionDetect):
             List[np.ndarray]: Segmentation results for each ROI.
         """
         if self._detail_ROI_seg is None:
-            logger.assertion(self._segmenterObj is not None, "Segmenter object not set.")
-            self._detail_ROI_seg = [
-                cast(RxSegmentation, self._segmenterObj).segment_full(ROI) for ROI in self.ROIs
-            ]
+            assert self._segmenterObj is not None, "Segmenter object not set."
+            self._detail_ROI_seg = [self._segmenterObj.segment_full(ROI) for ROI in self.ROIs]
         return self._detail_ROI_seg
 
 
@@ -390,8 +388,8 @@ class RxVisionVerify(RxVisionSegment):
             np.ndarray: The vectorized reference image.
         """
         if self._vectorized_ref is None:
-            logger.assertion(self._vectorizerObj is not None, "Vectorizer object not set.")
-            self._vectorized_ref = cast(RxVectorizer, self._vectorizerObj).encode(self.ref_image)
+            assert self._vectorizerObj is not None, "Vectorizer object not set."
+            self._vectorized_ref = self._vectorizerObj.encode(self.ref_image)
         return self._vectorized_ref
 
     @property
@@ -402,8 +400,8 @@ class RxVisionVerify(RxVisionSegment):
             List[np.ndarray]: The vectorized ROIs.
         """
         if self._vectorized_ROIs is None:
-            logger.assertion(self._vectorizerObj is not None, "Vectorizer object not set.")
-            self._vectorized_ROIs = cast(RxVectorizer, self._vectorizerObj).encode(self.masked_ROIs)
+            assert self._vectorizerObj is not None, "Vectorizer object not set."
+            self._vectorized_ROIs = self._vectorizerObj.encode(self.masked_ROIs)
         return self._vectorized_ROIs
 
     @property

@@ -42,7 +42,7 @@ def load_consumer_image_df_by_layout(
 
     # Filter the dataframe based on the layout
     if layout is not None:
-        logger.assertion(layout in LAYOUTS, f"Invalid layout: {layout} not in {LAYOUTS}")
+        assert layout in LAYOUTS, f"Invalid layout: {layout} not in {LAYOUTS}"
         df = df[df.Layout == layout]
 
     # Add a column for the filename

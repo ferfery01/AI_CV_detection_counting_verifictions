@@ -41,9 +41,7 @@ def random_partition(number: int, num_parts: int) -> List[int]:
     Returns:
         A list of num_parts random integers that add up to number.
     """
-    logger.assertion(
-        num_parts <= number, "The number of parts cannot be greater than the number to be divided"
-    )
+    assert num_parts <= number, "The number of parts cannot be greater than the number to be divided"
 
     # subtract num_parts from number to ensure at least 1 for each part
     number -= num_parts

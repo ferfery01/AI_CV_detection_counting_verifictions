@@ -136,7 +136,7 @@ class RxSegmentation(RxBase):
                 np.ndarray: The multi-label mask.
 
         """
-        logger.assertion(image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array.")
+        assert image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array."
         image = self._preprocess(image)
         prediction = self._predict(image)
         processed_result = self._postprocess(prediction)

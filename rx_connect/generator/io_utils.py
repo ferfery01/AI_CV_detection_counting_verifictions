@@ -157,10 +157,9 @@ def load_image_and_mask(
     image = io.imread(image_path)
 
     # Load the pill mask
-    logger.assertion(
-        Path(mask_path).exists(),
-        f"Could not find mask for image {image_path}. Did you run `mask_generator`?",
-    )
+    assert Path(
+        mask_path
+    ).exists(), f"Could not find mask for image {image_path}. Did you run `mask_generator`?"
     mask = io.imread(mask_path, as_gray=True)
 
     # Binarize the mask
@@ -183,10 +182,8 @@ def random_sample_pills(
     Returns:
         pill_mask_paths: The paths to the pill images and masks.
     """
-    logger.assertion(pill_types > 0, f"`pill_types` should be a positive integer, but provided {pill_types}.")
-    logger.assertion(
-        len(images_path) == len(masks_path), "`images_path` and `masks_path` have different lengths."
-    )
+    assert pill_types > 0, f"`pill_types` should be a positive integer, but provided {pill_types}."
+    assert len(images_path) == len(masks_path), "`images_path` and `masks_path` have different lengths."
 
     sampled_img_paths: List[Path] = []
     sampled_mask_paths: List[Path] = []
@@ -215,10 +212,8 @@ def load_pills_and_masks(
         pill_images: The pill images.
         pill_masks: The pill masks.
     """
-    logger.assertion(len(images_path) > 0, "`images_path` is empty")
-    logger.assertion(
-        len(images_path) == len(masks_path), "`images_path` and `masks_path` have different lengths."
-    )
+    assert len(images_path) > 0, "`images_path` is empty"
+    assert len(images_path) == len(masks_path), "`images_path` and `masks_path` have different lengths."
 
     pill_images: List[np.ndarray] = []
     pill_masks: List[np.ndarray] = []

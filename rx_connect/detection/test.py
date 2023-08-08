@@ -69,15 +69,14 @@ def main(
     num_workers: int,
 ) -> None:
     # Check that either experiment name or ckpt path is provided
-    logger.assertion(
-        experiment_name is not None or ckpt_path is not None,
-        "Either experiment name or ckpt path must be provided.",
-    )
+    assert (
+        experiment_name is not None or ckpt_path is not None
+    ), "Either experiment name or ckpt path must be provided."
 
     # Infer the model name from the experiment name
     if yolo_model is None and experiment_name is not None:
         yolo_model = experiment_name.rsplit(":", 1)[1]
-    logger.assertion(yolo_model is not None, "YOLO model must be provided when ckpt path is provided.")
+    assert yolo_model is not None, "YOLO model must be provided when ckpt path is provided."
 
     if ckpt_path is not None and experiment_name is not None:
         logger.warning("Defaulting to model provided by the checkpoint.")

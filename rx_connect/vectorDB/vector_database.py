@@ -50,10 +50,9 @@ class VectorDB:
         Args:
             num_dim: The number of dimensions of the output vector space.
         """
-        logger.assertion(
-            num_dim <= len(self._masked_images),
-            f"Number of samples {self._num_image_samples} is less than clustering dimensions {num_dim}.",
-        )
+        assert num_dim <= len(
+            self._masked_images
+        ), f"Number of samples {self._num_image_samples} is less than clustering dimensions {num_dim}."
         all_vectors = np.stack(self._vectorizer.encode(self._masked_images), axis=0)
         self._vectorSpace = (
             KMeans(n_clusters=num_dim, random_state=0, n_init="auto").fit(all_vectors).cluster_centers_

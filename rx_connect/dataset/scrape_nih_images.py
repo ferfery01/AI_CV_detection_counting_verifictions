@@ -106,7 +106,7 @@ def extract_image_urls(url: str) -> List[str]:
 def main(download_dir: str, indices: Tuple[int, int], layout: str, xml_download: bool) -> None:
     # Set the start and end indices of the projects to download
     start, end = indices
-    logger.assertion(end >= start, "End index must be greater than or equal to start index.")
+    assert end >= start, "End index must be greater than or equal to start index."
     # The projects are named as PillProjectDisc1, PillProjectDisc2, ..., PillProjectDisc110.
     # Hence, the start and end indices must be between 1 and 110.
     start, end = max(1, min(110, start)), max(1, min(110, end))

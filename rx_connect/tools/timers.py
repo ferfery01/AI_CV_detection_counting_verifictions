@@ -4,9 +4,9 @@ import time
 from datetime import timedelta
 from logging import Logger
 from types import FrameType
-from typing import Any, Callable, Optional, TypeVar, Union, cast
+from typing import Any, Callable, Optional, TypeVar, cast
 
-from rx_connect.tools.logging import CustomLogger, setup_logger
+from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
 
@@ -48,10 +48,8 @@ class timer:
 
     __slots__ = ("logger", "name", "_duration", "start")
 
-    def __init__(
-        self, logger: Optional[Union[Logger, CustomLogger]] = None, name: str = "Code Block"
-    ) -> None:
-        if logger is not None and not isinstance(logger, (Logger, CustomLogger)):
+    def __init__(self, logger: Optional[Logger] = None, name: str = "Code Block") -> None:
+        if logger is not None and not isinstance(logger, Logger):
             raise TypeError(f"logger must be of type logging.Logger or CustomLogger, got {type(logger)}")
 
         self.logger = logger

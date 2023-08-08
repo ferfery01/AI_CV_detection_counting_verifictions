@@ -215,11 +215,10 @@ def main(
     debug: bool,
 ) -> None:
     # Validate arguments
-    logger.assertion(
-        debug or expt_name is not None, "Experiment name must be provided if debug flag is not set."
-    )
-    if mixed_precision:
-        logger.assertion(torch.cuda.is_available(), "Mixed precision training is only supported on CUDA.")
+    assert debug or expt_name is not None, "Experiment name must be provided if debug flag is not set."
+    if mixed_precision and not torch.cuda.is_available():
+        logger.warning("Mixed precision training is not available. Ignoring the flag.")
+        mixed_precision = False
 
     # Set the maximum number of open files allowed by the systems
     set_max_open_files_limit()

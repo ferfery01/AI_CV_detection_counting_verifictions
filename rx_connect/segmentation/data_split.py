@@ -68,7 +68,7 @@ def split_dataset(
     for image_file in tqdm(image_dir.iterdir(), desc="Split data processing now..."):
         # find corresponding labels using the base name of the image file
         label_file = label_dir / f"{image_file.stem}.txt"
-        logger.assertion(label_file.exists(), f"label file {label_file.name} is not in {label_dir}.")
+        assert label_file.exists(), f"label file {label_file.name} is not in {label_dir}."
 
         # image_hash_value falls into [0, 1). Exclusive and inclusive is tested to work.
         image_hash_value = str_to_float(image_file.name)
@@ -113,10 +113,9 @@ def main(
         for subset_name in ["images", "labels"]:
             (dest_dir / set_name / subset_name).mkdir(parents=True, exist_ok=True)
 
-    logger.assertion(
-        train_percentage + test_percentage <= 1,
-        f"Wrong partitions provided: {train_percentage}/{test_percentage}/{1-train_percentage-test_percentage}.",
-    )
+    assert (
+        train_percentage + test_percentage <= 1
+    ), f"Wrong partitions provided: {train_percentage}/{test_percentage}/{1-train_percentage-test_percentage}."
 
     # Split and move the original image and label data to train/test/val set
     split_dataset(image_dir, label_dir, dest_dir, train_percentage, test_percentage)

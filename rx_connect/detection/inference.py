@@ -9,11 +9,11 @@ from joblib import Parallel, delayed
 from PIL import Image
 from super_gradients.common.data_types.enum import MultiGPUMode
 from super_gradients.training import models
-from super_gradients.training.models.prediction_results import (
+from super_gradients.training.utils.distributed_training_utils import setup_device
+from super_gradients.training.utils.predict import (
     ImageDetectionPrediction,
     ImagesDetectionPrediction,
 )
-from super_gradients.training.utils.distributed_training_utils import setup_device
 from tqdm import tqdm
 
 from rx_connect import ROOT_DIR

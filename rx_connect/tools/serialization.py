@@ -15,6 +15,7 @@ logger = setup_logger()
 
 def read_pickle(path: Union[str, Path]) -> Any:
     """Reads a pickle file from disk and returns the deserialized object."""
+    assert Path(path).exists(), f"Couldn't find pickle file at {path}."
     with open(path, "rb") as f:
         data = pickle.load(f)
     return data
@@ -29,7 +30,7 @@ def write_pickle(data: Any, path: Union[str, Path]) -> None:
 
 def load_yaml(cfg: Union[str, Path]) -> DictConfig:
     """Loads the yaml file."""
-    logger.assertion(Path(cfg).exists(), f"Couldn't find config file at {cfg}.")
+    assert Path(cfg).exists(), f"Couldn't find config file at {cfg}."
     with open(cfg, "r") as f:
         data_loaded = yaml.safe_load(f)
     return OmegaConf.create(data_loaded)

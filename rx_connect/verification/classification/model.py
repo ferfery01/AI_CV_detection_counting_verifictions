@@ -168,12 +168,12 @@ class MultiheadModel(nn.Module):
         as separate classes. This function takes the max of the logits for the front and back side
         of the pill to get the logits for the original classes.
         """
-        logger.assertion(self.sep_side_train, "Cannot shift label indexes if sep_side_train is False")
+        assert self.sep_side_train, "Cannot shift label indexes if `sep_side_train` is False"
 
         actual_n_classes = self.n_classes // 2
         front = logits[:, :actual_n_classes]
         back = logits[:, actual_n_classes:]
-        logger.assertion(front.shape == back.shape, f"{front.shape} != {back.shape}")
+        assert front.shape == back.shape, f"{front.shape} != {back.shape}"
 
         # Take the max of the logits for the front and back side of the pill
         logits = torch.stack([front, back], dim=-1)

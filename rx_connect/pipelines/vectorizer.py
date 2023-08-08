@@ -40,7 +40,7 @@ class RxVectorizer(ABC):
         if model_path is not None:
             # If remote model path is provided, fetch the model from the remote
             self._model_path = fetch_from_remote(model_path, cache_dir=CACHE_DIR / "vectorization")
-            logger.assertion(self._model_path.exists(), f"Model path {self._model_path} does not exist.")
+            assert self._model_path.exists(), f"Model path {self._model_path} does not exist."
             self._load_model()
 
     @abstractmethod
@@ -78,9 +78,7 @@ class RxVectorizer(ABC):
         if isinstance(images, np.ndarray):
             if images.ndim == 3:
                 return self(images)
-            logger.assertion(
-                images.ndim == 4, "Images must be 3-dimensional (single) or 4-dimensional (stacked)."
-            )
+            assert images.ndim == 4, "Images must be 3-dimensional (single) or 4-dimensional (stacked)."
         return [self(image) for image in images]
 
     def __getstate__(self) -> Dict[str, Any]:
@@ -119,7 +117,7 @@ class RxVectorizerSift(RxVectorizer):
         """Extracts the image descriptors using SIFT. The histogram of the colored image is
         equalized before extracting the SIFT descriptors.
         """
-        logger.assertion(image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array.")
+        assert image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array."
 
         # Equalize the histogram of the image
         image = equalize_histogram(image)
@@ -198,10 +196,9 @@ class RxVectorizerDB(RxVectorizer):
         return preprocessed_image
 
     def _predict(self, preproc_vector: np.ndarray) -> np.ndarray:
-        logger.assertion(
-            preproc_vector.shape[0] == self._model.shape[1],
-            f"Shape mismatch - input-vector: {preproc_vector.shape}, VectorDB: {self._model.shape}.",
-        )
+        assert (
+            preproc_vector.shape[0] == self._model.shape[1]
+        ), f"Shape mismatch - input-vector: {preproc_vector.shape}, VectorDB: {self._model.shape}."
         return np.dot(preproc_vector, self._model.T)
 
 

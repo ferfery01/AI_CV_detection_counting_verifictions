@@ -33,7 +33,7 @@ class RxDetection(RxBase):
         """Loads the YOLO-NAS model."""
         # Fetch the model from the remote if it is not already in the cache.
         self._model_path = fetch_from_remote(self._model_path, cache_dir=CACHE_DIR / "counting")
-        logger.assertion(self._model_path.exists(), f"Model path {self._model_path} does not exist.")
+        assert self._model_path.exists(), f"Model path {self._model_path} does not exist."
 
         # Load the model.
         self._model = yolo_model.get(
@@ -64,7 +64,7 @@ class RxDetection(RxBase):
     @timer()
     def count(self, image: np.ndarray) -> List[CounterModuleOutput]:
         """Counts the number of objects in the image and returns a list of CounterModuleOutput objects."""
-        logger.assertion(image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array.")
+        assert image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array."
 
         pred = self(image)
         bboxes: List[List[int]] = pred.bboxes_xyxy.astype(int).tolist()

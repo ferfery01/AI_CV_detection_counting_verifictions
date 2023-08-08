@@ -165,9 +165,8 @@ def main(epill_path: str, data_dir: str, threshold: float, nfalse_ref: int) -> t
         true_pos += sum(pos_similarity_scores > threshold)
         n_pos += 1
 
-        logger.assertion(
-            np.all(pos_similarity_scores <= 1.0), "Some values of similarity scores is out of range."
-        )
+        assert np.all(pos_similarity_scores <= 1.0), "Some values of similarity scores is out of range."
+
         # prob_diff_pos is in fact np.mean([1.0 - x for x in pos_similarity_scores])
         prob_diff_pos = 1.00 - np.mean(pos_similarity_scores)
         prob_diff_pos_sum += prob_diff_pos
