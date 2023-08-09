@@ -1,7 +1,13 @@
-from typing import Optional, Tuple
+import random
+from typing import Optional, Tuple, Union
 
 import albumentations as A
 import numpy as np
+from skimage.transform import rescale
+
+from rx_connect.core.images.transforms import resize_to_square
+from rx_connect.core.types.generator import PillMask
+from rx_connect.core.utils.func_utils import to_tuple
 
 COLOR_TRANSFORMS = [
     A.CLAHE(),
@@ -15,14 +21,14 @@ COLOR_TRANSFORMS = [
 NOISE_TRANSFORMS = [
     A.AdvancedBlur(),
     A.MedianBlur(),
-    A.ZoomBlur(max_factor=1.1),
+    A.ZoomBlur(max_factor=1.05, p=0.25),
     A.GaussNoise(),
     A.ImageCompression(quality_lower=50),
     A.ISONoise(),
     A.PixelDropout(dropout_prob=0.05),
     A.Emboss(alpha=(0.8, 1.0), strength=(0.7, 1.0)),
     A.Sharpen(),
-    A.Spatter(mode=["rain", "mud"]),
+    # A.Spatter(mode=["rain", "mud"], p=0.25),
 ]
 """Albumentations composition of noise transforms."""
 
@@ -61,75 +67,87 @@ def resize_bg(img: np.ndarray, desired_max: int = 1920, desired_min: Optional[in
     return img
 
 
-def resize_and_transform_pill(
+def rescale_pill_and_mask(
+    image: np.ndarray, mask: np.ndarray, scale: Union[float, Tuple[float, float]] = 1.0
+) -> PillMask:
+    """Rescale the pill image and the corresponding mask by the given scale.
+
+    Args:
+        image (np.ndarray): pill image as a numpy array.
+        mask (np.ndarray): binary mask of the pill image.
+        scale (Union[float, Tuple[float, float]], optional): The scaling factor to use for rescaling
+            the pill image and mask. If a tuple is provided, then the scaling factor is randomly
+            sampled from the range (min, max). If a float is provided, then the scaling factor is fixed.
+
+    Returns:
+        PillMask: rescaled pill image and mask.
+    """
+    # Randomly sample the scaling factor from the given range
+    s = random.uniform(*to_tuple(scale))
+
+    # Scale image and mask by the given scale
+    image_t = rescale(image, (s, s), mode="constant", order=1, anti_aliasing=True, channel_axis=2)
+    mask_t = rescale(mask, (s, s), mode="constant", order=0)
+
+    # Resize the image and mask to a square
+    image_t = resize_to_square(image_t)
+    mask_t = resize_to_square(mask_t)
+
+    return PillMask(image_t, mask_t)
+
+
+def transform_pill(
     image: np.ndarray,
     mask: np.ndarray,
-    longest_min: int = 224,
-    longest_max: int = 224,
     allow_defects: bool = False,
     augmentations: Optional[A.BasicTransform] = None,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Resize the pill image and the corresponding mask to the given height and width.
-    Also, apply some random augmentations to the pill image.
+) -> PillMask:
+    """Apply random color and/or noise augmentations to the pill image.
 
     Args:
         image: pill image as a numpy array.
         mask: binary mask of the pill image.
-        longest_min: minimum size of the longest side of the resized image.
-        longest_max: maximum size of the longest side of the resized image.
         allow_defects: whether to allow defects in the pill image.
-        augmentations: augmentations to apply to the pill image.
+        augmentations: color and/or noise augmentations to apply to the pill image.
 
     Returns:
-        tuple of transformed pill image and mask.
+        transformed pill image and mask.
     """
-    height, width = image.shape[:2]
+    # Convert the image and the boolean mask to uint8.
+    image = (
+        (image * 255).astype(np.uint8) if image.dtype in (np.float32, np.float64) else image.astype(np.uint8)
+    )
+    mask = mask.astype(np.uint8)
 
-    long_side = max(height, width)
-    short_side = min(height, width)
-
-    # Randomly select the long side of the new image. The short side will be resized to
-    # keep the aspect ratio of the original image.
-    long_new = np.random.randint(longest_min, longest_max + 1)
-    short_new = int(short_side * long_new / long_side)
-    h_new, w_new = (long_new, short_new) if height > width else (short_new, long_new)
-
-    # Resize the image to the provided size.
-    transform_resize = A.Resize(height=h_new, width=w_new)
-    transform_resized = transform_resize(image=image, mask=mask)
-    img_t, mask_t = transform_resized["image"], transform_resized["mask"]
-
-    # Initialize the augmentations if not provided.
-    augmentations = augmentations or A.Compose(
-        [
-            A.Rotate(limit=90, border_mode=0, mask_value=0, p=1.0),
-            A.RandomBrightnessContrast(
-                brightness_limit=0.02,
-                contrast_limit=0.02,
-                brightness_by_max=True,
-            ),
-        ]
+    # Initialize the transforms to resize the image and mask.
+    geometric_aug = A.Compose([A.Rotate(limit=180, border_mode=0, mask_value=0, p=1.0)])
+    color_aug = augmentations or A.Compose(
+        [A.RandomBrightnessContrast(brightness_limit=0.02, contrast_limit=0.02, brightness_by_max=True)]
     )
 
     # Add random crop to the augmentations if defects are allowed.
     if allow_defects:
+        height, width = mask.shape
         # Randomly select the fraction of the image to crop. The fraction is selected
         # from the range [80, 100) percent.
         fraction = 0.01 * np.random.randint(80, 100)
 
         # Apply random crop augmentation 25% of the time
-        augmentations = A.Compose(
+        geometric_aug = A.Compose(
             [
-                augmentations,
-                A.RandomCrop(p=0.25, height=int(fraction * h_new), width=int(fraction * w_new)),
+                geometric_aug,
+                A.RandomCrop(p=0.25, height=int(fraction * height), width=int(fraction * width)),
             ]
         )
 
-    # Apply the augmentations to the image.
-    transforms_aug = augmentations(image=img_t, mask=mask_t)
-    img_t, mask_t = transforms_aug["image"], transforms_aug["mask"]
+    # First, apply the geometric augmentation to the image and mask.
+    transforms_rot = geometric_aug(image=image, mask=mask)
+    image_t, mask_t = transforms_rot["image"], transforms_rot["mask"]
 
-    return img_t, mask_t
+    # Second, apply the color augmentation to the image.
+    image_t = color_aug(image=image_t)["image"]
+
+    return PillMask(image_t, mask_t)
 
 
 def apply_augmentations(image: np.ndarray, apply_color: bool = True, apply_noise: bool = True) -> np.ndarray:

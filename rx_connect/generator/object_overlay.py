@@ -140,16 +140,18 @@ def check_overlap(
     Returns:
         bool: False if the overlap fraction exceeds the specified 'overlap_fraction', True otherwise.
     """
-    y, x = top_left
+    x, y = top_left
     h_mask, w_mask = mask.shape
 
     # Extract a section from the composition mask that matches the pill's location and size
-    comp_patch = comp_mask[x : x + h_mask, y : y + w_mask]
+    # Since the pill may be partially outside the bounds of the composition, we need to take
+    # care to avoid indexing outside the bounds of the composition mask
+    comp_patch = comp_mask[max(0, y) : y + h_mask, max(0, x) : x + w_mask]
 
     # Compute overlap between the pill mask and the extracted composition patch
     h_patch, w_patch = comp_patch.shape
-    overlap_patch = mask[:h_patch, :w_patch] * comp_patch
+    overlap_patch = (mask[:h_patch, :w_patch] * comp_patch).astype(bool)
 
     # If the sum of the overlapped area divided by the total area of the pill is less than
     # the allowed overlap fraction, return True; else False.
-    return overlap_patch.sum() / mask.sum() <= overlap_fraction
+    return overlap_patch.sum() / mask.sum() <= overlap_fraction + 1e-6

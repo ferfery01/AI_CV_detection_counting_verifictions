@@ -9,9 +9,9 @@ import numpy as np
 from joblib import Parallel, delayed
 from tqdm import trange
 
-from rx_connect import SHARED_EPILL_DATA_DIR
+from rx_connect import SHARED_RXIMAGE_DATA_DIR
+from rx_connect.core.types.generator import SEGMENTATION_LABELS, YOLO_LABELS
 from rx_connect.generator.annotations import create_yolo_annotations
-from rx_connect.generator.io_utils import SEGMENTATION_LABELS, YOLO_LABELS
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.tools.logging import setup_logger
 
@@ -81,7 +81,7 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
 @click.option(
     "-p",
     "--pill-mask-path",
-    default=SHARED_EPILL_DATA_DIR,
+    default=SHARED_RXIMAGE_DATA_DIR,
     show_default=True,
     help="Path to the folder with pill masks. It can be a local directory or a remote path.",
 )
@@ -125,6 +125,18 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
     default=1,
     show_default=True,
     help="Number of different types of pills on each image",
+)
+@click.option(
+    "-s",
+    "--scale",
+    nargs=2,
+    type=float,
+    default=[0.1, 1.0],
+    show_default=True,
+    help="""The range of scaling factors to apply to the pills. The scaling factor is randomly sampled
+    from the range. The same scaling to both the width and height is applied. To use a fixed scaling factor,
+    provide the same value for both the minimum and maximum values.
+    """,
 )
 @click.option(
     "-mp",
@@ -222,6 +234,7 @@ def main(
     n_images: int,
     mode: str,
     n_pill_types: int,
+    scale: Tuple[float, float],
     min_pills: int,
     max_pills: int,
     max_overlap: float,
@@ -241,11 +254,12 @@ def main(
 
     # Initialize Generator object
     generator_obj = RxImageGenerator(
-        images_dir=pill_mask_path,
+        data_dir=pill_mask_path,
         bg_dir=bg_image_path,
         image_size=(min_bg_dim, max_bg_dim),
         num_pills=(min_pills, max_pills),
         num_pills_type=n_pill_types,
+        scale=scale,
         max_overlap=max_overlap,
         max_attempts=max_attempts,
         color_tint=color_tint,

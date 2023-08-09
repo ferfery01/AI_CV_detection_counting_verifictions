@@ -64,8 +64,11 @@ def split_dataset(
     Returns:
         None: The function does not return anything; it moves the files to the respective folders.
     """
+    # Get all image files in the image directory
+    image_paths = list(image_dir.glob("*.[jp][pn]g"))
 
-    for image_file in tqdm(image_dir.iterdir(), desc="Split data processing now..."):
+    # Iterate over all image files
+    for image_file in tqdm(image_paths, desc="Splitting dataset"):
         # find corresponding labels using the base name of the image file
         label_file = label_dir / f"{image_file.stem}.txt"
         assert label_file.exists(), f"label file {label_file.name} is not in {label_dir}."

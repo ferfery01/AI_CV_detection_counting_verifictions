@@ -1,12 +1,13 @@
 import random
 from pathlib import Path
-from typing import Any, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
+from typing import Any, List, Optional, Sequence, Set, Tuple, Union
 
 import albumentations as A
 import numpy as np
 from skimage import io
 
 from rx_connect import CACHE_DIR
+from rx_connect.core.types.generator import SEGMENTATION_LABELS, PillMask, PillMaskPaths
 from rx_connect.generator.transform import resize_bg
 from rx_connect.tools import is_remote_dir
 from rx_connect.tools.data_tools import (
@@ -16,24 +17,6 @@ from rx_connect.tools.data_tools import (
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
-
-YOLO_LABELS = "labels"
-SEGMENTATION_LABELS = "comp_masks"
-COCO_LABELS = "COCO"
-
-
-class PillMaskPaths(NamedTuple):
-    """The paths to the pill image and mask."""
-
-    imgs_path: List[Path]
-    masks_path: List[Path]
-
-
-class PillMask(NamedTuple):
-    """The pill image and mask."""
-
-    img: np.ndarray
-    mask: np.ndarray
 
 
 def get_unmasked_image_paths(image_folder: Union[str, Path], output_folder: Union[str, Path]) -> List[Path]:
@@ -90,7 +73,10 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
         masks_path = fetch_file_paths_from_remote_dir(data_dir / "masks")
     else:
         imgs_path = list((data_dir / "images").glob("*.jpg"))
-        masks_path = list((data_dir / "masks").glob("*.jpg"))
+        masks_path = list((data_dir / "masks").glob("*.[jp][pn]g"))
+        """New masks are saved as PNG format as it can handle binary data without loss of information.
+        However, old masks are saved as JPG format. Hence, we need to check for both formats.
+        """
 
     # Sort the file paths to ensure that the images and masks are aligned
     imgs_path, masks_path = sorted(imgs_path), sorted(masks_path)
@@ -138,16 +124,16 @@ def load_comp_mask_paths(data_dir: Union[str, Path]) -> List[Path]:
 def load_image_and_mask(
     image_path: Union[str, Path], mask_path: Union[str, Path], thresh: int = 25
 ) -> PillMask:
-    """Get the image and mask from the pill mask paths.
+    """Get the image and boolean mask from the pill mask paths.
 
     Args:
         image: The path to the pill image. Can be a local path or a remote path.
         mask: The path to the pill mask. Can be a local path or a remote path.
-        thresh: The threshold at which to binarize the mask.
+        thresh: The threshold at which to binarize the mask. Useful only for the old ePillID masks.
 
     Returns:
-        img: The pill image.
-        mask: The pill mask.
+        img: The pill image as a numpy array.
+        mask: The pill mask as a boolean array.
     """
     # Fetch the image and mask from remote server, if necessary
     image_path = fetch_from_remote(image_path, cache_dir=CACHE_DIR / "images")
@@ -162,11 +148,13 @@ def load_image_and_mask(
     ).exists(), f"Could not find mask for image {image_path}. Did you run `mask_generator`?"
     mask = io.imread(mask_path, as_gray=True)
 
-    # Binarize the mask
-    mask[mask <= thresh] = 0
-    mask[mask > thresh] = 1
+    # Binarize the mask if it is not binary already
+    # The new masks contain only 0s and 1s, but the old masks can be anything between 0 and 255
+    if len(np.unique(mask)) > 2:
+        mask[mask <= thresh] = 0
+        mask[mask > thresh] = 1
 
-    return PillMask(img=image, mask=mask)
+    return PillMask(image=image, mask=mask.astype(bool))
 
 
 def random_sample_pills(

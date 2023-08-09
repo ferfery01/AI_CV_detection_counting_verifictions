@@ -4,10 +4,10 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 
-from rx_connect import SHARED_EPILL_DATA_DIR
+from rx_connect import SHARED_RXIMAGE_DATA_DIR
+from rx_connect.core.types.generator import PillMaskPaths
 from rx_connect.generator.composition import ImageComposition, generate_image
 from rx_connect.generator.io_utils import (
-    PillMaskPaths,
     get_background_image,
     load_pill_mask_paths,
     load_pills_and_masks,
@@ -21,16 +21,16 @@ from rx_connect.tools.timers import timer
 class RxImageGenerator:
     """The RxImageGenerator class is used to generate images of pills on a background.
 
-    NOTE: The `images_dir` should contain the following structure:
+    NOTE: The `data_dir` should contain the following structure:
     ├── images
     │     ├── 0001.jpg
     │     ├── ...
     ├── masks
-          ├── 0001.jpg
+          ├── 0001.jpg(png)
           ├── ...
     """
 
-    images_dir: Union[str, Path] = SHARED_EPILL_DATA_DIR
+    data_dir: Union[str, Path] = SHARED_RXIMAGE_DATA_DIR
     """Directory containing the pill images and masks. It can either be a local directory
     or remote directory.
     """
@@ -47,14 +47,21 @@ class RxImageGenerator:
     num_pills_type: int = 1
     """Different types of pills to generate
     """
+    scale: Union[float, Tuple[float, float]] = (0.3, 0.3)
+    """The scaling factor to use for rescaling the pill image and mask. If a tuple is provided,
+    then the scaling factor is randomly sampled from the range (min, max). If a float is
+    provided, then the scaling factor is fixed.
+    """
     max_overlap: float = 0.2
-    """Maximum overlap allowed between pills
+    """Maximum overlap allowed between pills. The value should be between 0 and 1. If the value
+    is 0, then no overlap is allowed. If the value is 1, then the pills can overlap completely.
     """
     max_attempts: int = 5
-    """Maximum number of attempts to compose a pill on the background
+    """Maximum number of attempts to compose a pill on the background. If the number of attempts
+    exceeds this value, then the pill is discarded.
     """
     thresh: int = 25
-    """The threshold at which to binarize the mask.
+    """The threshold at which to binarize the mask. Useful only for the old ePillID masks.
     """
     color_tint: int = 0
     """Controls the aggressiveness of the color tint applied to the background.
@@ -99,7 +106,7 @@ class RxImageGenerator:
 
     def __post_init__(self) -> None:
         # Load the pill images and the associated mask paths.
-        self._pill_mask_paths = load_pill_mask_paths(self.images_dir)
+        self._pill_mask_paths = load_pill_mask_paths(self.data_dir)
 
         # Set the background image
         self.config_background(self.bg_dir, self.image_size, color_tint=self.color_tint)
@@ -167,6 +174,7 @@ class RxImageGenerator:
             self._pill_masks,
             min_pills=self.num_pills[0],
             max_pills=self.num_pills[1],
+            scale=self.scale,
             max_overlap=self.max_overlap,
             max_attempts=self.max_attempts,
             enable_defective_pills=self.enable_defective_pills,

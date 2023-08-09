@@ -3,11 +3,14 @@ from pathlib import Path
 SHARED_REMOTE_DIR = "/media/RxConnectShared"
 """The shared remote directory name.
 """
-SHARED_REMOTE_CKPT_DIR = "/media/RxConnectShared/checkpoints"
+SHARED_REMOTE_CKPT_DIR = f"{SHARED_REMOTE_DIR}/checkpoints"
 """The shared remote checkpoint directory.
 """
-SHARED_EPILL_DATA_DIR = "/media/RxConnectShared/ePillID/pills/"
+SHARED_EPILL_DATA_DIR = f"{SHARED_REMOTE_DIR}/ePillID/pills/"
 """The shared ePillID data directory.
+"""
+SHARED_RXIMAGE_DATA_DIR = f"{SHARED_REMOTE_DIR}/RxImage/"
+"""The shared RxImage data directory.
 """
 PROJECT_DIR = Path(__file__).parent
 """The project directory.

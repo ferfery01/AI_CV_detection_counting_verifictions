@@ -1,3 +1,5 @@
+from typing import Optional, Sequence, Union
+
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
@@ -20,6 +22,49 @@ def pad_image(image: np.ndarray, pad_width: int, pad_value: int = 0) -> np.ndarr
         mode="constant",
         constant_values=pad_value,
     )
+
+
+def resize_to_square(
+    image: np.ndarray,
+    mode: str = "constant",
+    cval: Optional[Union[int, Sequence[int], Sequence[Sequence[int]]]] = 0,
+) -> np.ndarray:
+    """Pads the shorter dimension of a given image to make it square. The padding is applied to both sides
+    of the shorter dimension, and the original aspect ratio of the image is preserved.
+
+    Args:
+        image (np.ndarray): The input image, which can have one (grayscale) or three (color) channels.
+        mode (str, optional): The method used for padding. Can be one of the modes supported by `np.pad`.
+            Defaults to 'constant'.
+        cval (Optional[Union[int, Sequence[int], Sequence[Sequence[int]]]], optional): The constant values to
+            use for padding when mode is 'constant'. Can be a scalar or sequence of length equal to the number
+            of dimensions in the image. Defaults to 0.
+
+    Returns:
+        np.ndarray: The padded square image.
+    """
+    # Find the shape of the image
+    height, width = image.shape[:2]
+
+    # Determine the size of padding for the shorter dimension
+    difference = abs(height - width)
+    padding_size = difference // 2
+    padding_extra = difference % 2
+
+    # Define padding for height or width depending on which is smaller
+    if height < width:
+        padding = [(padding_size, padding_size + padding_extra), (0, 0)]
+    else:
+        padding = [(0, 0), (padding_size, padding_size + padding_extra)]
+
+    # Add padding for the third dimension if the image is colored (3 channels)
+    if image.ndim == 3:
+        padding += [(0, 0)]
+
+    # Pad the image using NumPy's pad function and the padding sizes determined earlier
+    square_image = np.pad(image, padding, mode=mode, constant_values=cval)  # type: ignore
+
+    return square_image
 
 
 def resize_and_center(

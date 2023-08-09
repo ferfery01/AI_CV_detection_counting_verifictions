@@ -9,7 +9,8 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 
 from rx_connect import ROOT_DIR
-from rx_connect.generator.io_utils import COCO_LABELS, load_comp_mask_paths
+from rx_connect.core.types.generator import COCO_LABELS
+from rx_connect.generator.io_utils import load_comp_mask_paths
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
@@ -97,12 +98,12 @@ def approximate_contours(contour: np.ndarray, eps: float = 0.0015) -> np.ndarray
 
 @click.command()
 @click.option(
-    "-p",
-    "--pill-mask-path",
+    "-d",
+    "--data-dir",
     default=ROOT_DIR / "data" / "synthetic" / "segmentation",
     type=click.Path(exists=True),
     show_default=True,
-    help="Path to the folder containing composed image masks.",
+    help="Path to the folder containing images along with the composite masks",
 )
 @click.option(
     "-o",
@@ -110,12 +111,12 @@ def approximate_contours(contour: np.ndarray, eps: float = 0.0015) -> np.ndarray
     default=ROOT_DIR / "data" / "synthetic" / "segmentation",
     type=click.Path(),
     show_default=True,
-    help="Path to the output folder",
+    help="Path to the output folder where the polygon txt file will be saved",
 )
 @click.option(
     "-e",
     "--eps",
-    default=0.0015,
+    default=0.001,
     show_default=True,
     help="""The approximation accuracy of the polygon. Higher values will give a more approximate,
     simpler polygon, while lower values will give a polygon closer to the original contour.""",
@@ -127,9 +128,9 @@ def approximate_contours(contour: np.ndarray, eps: float = 0.0015) -> np.ndarray
     show_default=True,
     help="The number of CPU cores to use",
 )
-def main(pill_mask_path: Union[str, Path], output_folder: Union[str, Path], eps: float, num_cpu: int) -> None:
+def main(data_dir: Union[str, Path], output_folder: Union[str, Path], eps: float, num_cpu: int) -> None:
     # Load all the mask paths
-    mask_paths = load_comp_mask_paths(pill_mask_path)
+    mask_paths = load_comp_mask_paths(data_dir)
 
     # Create output folder
     output_path = Path(output_folder)

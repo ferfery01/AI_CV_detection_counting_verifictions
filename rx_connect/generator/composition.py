@@ -1,14 +1,15 @@
 import random
-from typing import List, NamedTuple, Sequence
+from typing import List, NamedTuple, Sequence, Tuple, Union
 
 import numpy as np
 
+from rx_connect.core.utils.func_utils import to_tuple
 from rx_connect.generator.object_overlay import (
     check_overlap,
     is_pill_within_background,
     overlay_image_onto_background,
 )
-from rx_connect.generator.transform import resize_and_transform_pill
+from rx_connect.generator.transform import rescale_pill_and_mask, transform_pill
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
@@ -61,18 +62,32 @@ def random_partition(number: int, num_parts: int) -> List[int]:
     return parts
 
 
+def sample_pill_location(pill_size: Tuple[int, int], bg_size: Tuple[int, int]) -> Tuple[int, int]:
+    """Sample a random location for the pill to be placed on the background image.
+
+    The position is sampled from a normal distribution with mean at the center of the background image.
+    The standard deviation is a quarter of the background image's width and height.
+    """
+    h_bg, w_bg = bg_size
+    h_pill, w_pill = pill_size
+    x, y = np.random.normal(loc=(w_bg / 2, h_bg / 2), scale=(w_bg / 4, h_bg / 4), size=(2,)).astype(int)
+    top_left = np.clip(x, -w_pill, w_bg), np.clip(y, -h_pill, h_bg)
+
+    return top_left
+
+
 def _compose_pill_on_bg(
     bg_image: np.ndarray,
     comp_mask: np.ndarray,
     pill_image: np.ndarray,
     pill_mask: np.ndarray,
     n_pills: int,
-    max_overlap: float = 0.2,
-    max_attempts: int = 10,
+    scale: float,
+    max_overlap: float,
+    max_attempts: int,
     start_index: int = 1,
     enable_defective_pills: bool = False,
     enable_edge_pills: bool = False,
-    **kwargs,
 ) -> ImageComposition:
     """Compose n_pills pills on a background image.
 
@@ -82,37 +97,31 @@ def _compose_pill_on_bg(
         pill_image: The pill image.
         pill_mask: The pill mask.
         n_pills: The number of pills to compose.
+        scale: The scaling factor for rescaling the pill image and mask.
         max_overlap: The maximum allowed overlap between pills.
         max_attempts: The maximum number of attempts to compose a pill.
         enable_defective_pills: Whether to allow defective pills to be placed on the background image.
         enable_edge_pills: Whether to allow pills to be placed on the border of the background image.
         start_index: The starting index for the pill labels.
-        **kwargs: Keyword arguments to be passed to resize_and_transform_pill.
 
     Returns:
         The composed image, mask, and label IDs.
     """
     h_bg, w_bg = bg_image.shape[:2]
-    h_pill, w_pill = pill_image.shape[:2]
-
-    label_ids: List[int] = []
     count: int = 1
+    label_ids: List[int] = []
+
+    # Rescale the pill image and mask to a certain size.
+    pill_image, pill_mask = rescale_pill_and_mask(pill_image, pill_mask, scale=scale)
+    h_pill, w_pill = pill_mask.shape
 
     for _ in range(n_pills):
-        # Resize and transform the pill image and mask.
-        pill_img_t, pill_mask_t = resize_and_transform_pill(
-            pill_image, pill_mask, allow_defects=enable_defective_pills, **kwargs
-        )
+        # Transform the pill image and mask.
+        pill_img_t, pill_mask_t = transform_pill(pill_image, pill_mask, allow_defects=enable_defective_pills)
 
         # Attempt to compose the pill on the background image.
         for _ in range(max_attempts):
-            # Randomly sample a position for the pill.
-            # The position is sampled from a normal distribution with mean at the center of the background image
-            # and standard deviation of a quarter of the background image's width and height.
-            x, y = np.random.normal(loc=(w_bg / 2, h_bg / 2), scale=(w_bg / 4, h_bg / 4), size=(2,)).astype(
-                int
-            )
-            top_left = np.clip(x, -w_pill, w_bg), np.clip(y, -h_pill, h_bg)
+            top_left = sample_pill_location(pill_size=(h_pill, w_pill), bg_size=(h_bg, w_bg))
 
             # Check if the pill can fit inside the background image.
             if not is_pill_within_background(bg_image, pill_mask_t, top_left, enable_edge_pills):
@@ -139,11 +148,11 @@ def generate_image(
     pill_masks: List[np.ndarray],
     min_pills: int = 5,
     max_pills: int = 15,
+    scale: Union[float, Tuple[float, float]] = 1.0,
     max_overlap: float = 0.2,
     max_attempts: int = 10,
     enable_defective_pills: bool = False,
     enable_edge_pills: bool = False,
-    **kwargs,
 ) -> ImageComposition:
     """Create a composition of pills on a background image.
 
@@ -153,12 +162,14 @@ def generate_image(
         pill_masks: A list of pill masks.
         min_pills: The minimum number of pills to compose.
         max_pills: The maximum number of pills to compose.
+        scale: The scaling factor to use for rescaling the pill image and mask. If a tuple is provided,
+            then the scaling factor is randomly sampled from the range (min, max). If a float is
+            provided, then the scaling factor is fixed.
         max_overlap: The maximum allowed overlap between pills.
         max_attempts: The maximum number of attempts to compose a pill.
         enable_defective_pills: Whether to allow defective pills to be placed on the background image.
         enable_edge_pills: whether to allow the pill object to be on the border of
             the background image.
-        **kwargs: Keyword arguments for resize_and_transform_pill.
 
     Returns:
         bg_image: The background image with pills.
@@ -177,6 +188,9 @@ def generate_image(
     # Randomly sample the number of pills per type.
     pills_per_type = random_partition(num_pills, len(pill_images))
 
+    # Randomly sample the scaling factor from the given range
+    scale_factor = random.uniform(*to_tuple(scale))
+
     label_ids: List[int] = []
 
     for idx, n_pills in enumerate(pills_per_type):
@@ -184,15 +198,15 @@ def generate_image(
         bg_image, comp_mask, labels = _compose_pill_on_bg(
             bg_image,
             comp_mask,
-            pill_images[idx],
-            pill_masks[idx],
-            n_pills,
+            pill_image=pill_images[idx],
+            pill_mask=pill_masks[idx],
+            n_pills=n_pills,
+            scale=scale_factor,
             max_overlap=max_overlap,
             max_attempts=max_attempts,
             enable_defective_pills=enable_defective_pills,
             enable_edge_pills=enable_edge_pills,
             start_index=len(label_ids),
-            **kwargs,
         )
         label_ids += labels
 

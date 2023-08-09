@@ -175,7 +175,7 @@ def main(
     crop_dir.mkdir(parents=True, exist_ok=True)
 
     # Iterate over the images in the test directory
-    img_paths: List[Path] = list(Path(test_dir).glob("*.png")) + list(Path(test_dir).glob("*.jpg"))
+    img_paths: List[Path] = list(Path(test_dir).glob("*.[jp][pn]g"))
     logger.info(f"Found {len(img_paths)} images in {test_dir}.")
 
     Parallel(n_jobs=num_cpu)(
