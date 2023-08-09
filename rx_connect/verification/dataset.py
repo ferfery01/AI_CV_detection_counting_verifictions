@@ -6,6 +6,7 @@ import lightning as L
 import numpy as np
 import pandas as pd
 import torch
+from albumentations.pytorch.transforms import ToTensorV2
 from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from skimage import io
 from sklearn.preprocessing import LabelEncoder
@@ -39,6 +40,7 @@ class SingleImagePillID(Dataset):
             pipeline of image transformations to be applied to the loaded images.
         rotate_aug (Optional[int]): The degree of rotation applied to images for augmentation
             purposes. This is utilized only during testing or evaluation.
+        return_ref (bool) :  A flag indicating if reference images are loaded.
 
     Methods:
         rotate_df(df: pd.DataFrame, n_rotations: int = 24) -> pd.DataFrame:
@@ -60,6 +62,7 @@ class SingleImagePillID(Dataset):
         train: bool,
         transforms: A.Compose,
         rotate_aug: Optional[int] = None,
+        return_ref: bool = False,
     ) -> None:
         self.root = Path(root)
         self.label_encoder = label_encoder
@@ -67,6 +70,7 @@ class SingleImagePillID(Dataset):
         self.rotate_aug = rotate_aug
         self.transforms = transforms
         self.df = self.rotate_df(df, 360 // self.rotate_aug) if self.rotate_aug is not None else df
+        self.return_ref = return_ref
 
     def rotate_df(self, df: pd.DataFrame, n_rotations: int = 24) -> pd.DataFrame:
         """Generate a new DataFrame that represents various rotation states of the original data.
@@ -92,6 +96,18 @@ class SingleImagePillID(Dataset):
 
         return new_df
 
+    def load_ref_image(self, df_row: pd.Series) -> torch.Tensor:
+        """Returns a reference image of the given image matching with front/back side
+        of the image; filtered out by Pill Type"""
+        new_row = self.df[
+            (self.df.pilltype_id == df_row.pilltype_id)
+            & (self.df.is_ref)
+            & (self.df.is_front == df_row.is_front)
+        ].iloc[0]
+        ref_image: np.ndarray = io.imread(self.root / new_row.image_path)
+
+        return ToTensorV2()(image=ref_image)["image"]
+
     def load_img(self, df_row: pd.Series) -> torch.Tensor:
         """Load image and apply transforms"""
         img_path, is_ref = df_row.image_path, df_row.is_ref
@@ -108,10 +124,12 @@ class SingleImagePillID(Dataset):
 
         # Load image and apply transforms
         image: torch.Tensor = self.load_img(df_row)
+        ref_image: torch.Tensor = self.load_ref_image(df_row)
         ndc_code: str = df_row.pilltype_id
 
         return {
             "image": image,
+            "ref_image": ref_image if self.return_ref else None,
             "label": int(self.label_encoder.transform([ndc_code])[0]),
             "image_name": str(df_row.image_path),
             "is_ref": bool(df_row.is_ref),
@@ -128,6 +146,7 @@ class PillIDDataModule(L.LightningDataModule):
         batch_size: int,
         num_workers: int = 8,
         pin_memory: bool = True,
+        return_ref: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -137,6 +156,7 @@ class PillIDDataModule(L.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+        self.return_ref = return_ref
         self.kwargs = kwargs
 
         # Initialize transforms
@@ -165,6 +185,7 @@ class PillIDDataModule(L.LightningDataModule):
                 self.root,
                 self.train_df,
                 self.label_encoder,
+                return_ref=self.return_ref,
                 train=True,
                 transforms=self.train_transforms,
             )
@@ -172,6 +193,7 @@ class PillIDDataModule(L.LightningDataModule):
                 self.root,
                 self.val_df,
                 self.label_encoder,
+                return_ref=self.return_ref,
                 train=False,
                 transforms=self.val_transforms,
             )
@@ -179,6 +201,7 @@ class PillIDDataModule(L.LightningDataModule):
                 self.root,
                 self.eval_df,
                 self.label_encoder,
+                return_ref=self.return_ref,
                 train=False,
                 transforms=self.val_transforms,
                 rotate_aug=24,
@@ -190,6 +213,7 @@ class PillIDDataModule(L.LightningDataModule):
                 train=False,
                 transforms=self.val_transforms,
                 rotate_aug=24,
+                return_ref=self.return_ref,
             )
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:

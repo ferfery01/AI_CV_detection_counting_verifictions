@@ -1,4 +1,4 @@
-from typing import List, TypedDict
+from typing import List, Optional, TypedDict
 
 import torch
 
@@ -7,6 +7,7 @@ import torch
 
 class ePillIDDataset(TypedDict):
     image: torch.Tensor
+    ref_image: Optional[torch.Tensor]
     label: int
     image_name: str
     is_ref: bool
