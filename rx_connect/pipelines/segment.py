@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, List, Union, cast
 
+import cv2
 import numpy as np
 from huggingface_hub import hf_hub_download
 from segment_anything import SamAutomaticMaskGenerator, build_sam
@@ -39,6 +40,7 @@ class RxSegmentation(RxBase):
             self._stability_score_thresh = conf.segmentation.stability_score_thresh
         if self._model_type == "YOLO":
             self._score_thresh = conf.segmentation.score_thresh
+            self._imgsz_setting = conf.segmentation.imgsz_setting
         self._model_ckpt = conf.segmentation.model_ckpt
 
     def _load_model(self) -> None:
@@ -76,8 +78,30 @@ class RxSegmentation(RxBase):
             pred = cast(SamAutomaticMaskGenerator, self._model).generate(image)
             return cast(List[SamHqSegmentResult], pred)
         else:
+            # The reason to do padding: current trained model (640*640 img resolution)
+            # is sensitive to scale of the pills,
+            # so do padding to ensure the scale or the pill in ROI is similar
+            self._img_height_setting, self._img_width_setting = self._imgsz_setting
+            self._height_diff, self._width_diff = (
+                self._img_height_setting - image.shape[0],
+                self._img_width_setting - image.shape[1],
+            )
+            # for height: both top and bottom needs offset: height_diff//2
+            # (might having subpixel, use minus to get the remaining pixel for another offset)
+            # same for width
+            self._height_offset, self._width_offset = self._height_diff // 2, self._width_diff // 2
+
+            image = cv2.copyMakeBorder(
+                image,
+                self._height_offset,
+                self._height_diff - self._height_offset,
+                self._width_offset,
+                self._width_diff - self._width_offset,
+                cv2.BORDER_CONSTANT,
+            )
+
             # result[0] is because ultralytics library way of package all the results in one list
-            return cast(YOLO, self._model)(image, conf=self._score_thresh)[0].cpu().numpy()
+            return cast(YOLO, self._model)(image, conf=self._score_thresh, verbose=False)[0].cpu().numpy()
 
     def _postprocess(self, prediction: Any) -> np.ndarray:
         """
@@ -100,6 +124,9 @@ class RxSegmentation(RxBase):
                 For orig_shape:
                     original shape of the image
 
+                Also, since we do the padding and we just want the ROI mask,
+                we need to crop it back to the original ROI size.
+
         Returns: bbox, segmented mask, and confidence score.
             For SAM:
                 np.ndarray: The best mask for the fore/background separation.
@@ -110,19 +137,16 @@ class RxSegmentation(RxBase):
             return get_best_mask(prediction).astype(np.uint8)
 
         else:
-            # for the loop: find how many boxes it detects; then take each detected bbox/mask/conf
-            # for bbox, it originally return Nx6: x; y; w; d; confidence_score; class probs. So just need x y w d
-            # TODO: add flag if no mask
-            num_mask = prediction.masks.shape[0]  # total number of masks segmented from an image
-            all_masks = []
-            for idx in range(num_mask):
-                all_masks.append(prediction.masks.masks[idx] * (idx + 1))
+            # since we are doing ROI segment now, just pick the first mask (highest confidence) and discard other pillls
+            # if later on we need to consider other pills, just pick the remaining masks
+            predicton = prediction.masks.masks[0].astype(np.int8)
+            bottom_place = self._img_height_setting - (self._height_diff - self._height_offset)
+            right_place = self._img_width_setting - (self._width_diff - self._width_offset)
 
-            combined_mask = np.max(all_masks, axis=0)
-            return combined_mask
+            return predicton[self._height_offset : bottom_place, self._width_offset : right_place]
 
     @timer()
-    def segment_full(self, image: np.ndarray) -> np.ndarray:
+    def segment(self, image: np.ndarray) -> np.ndarray:
         """
         Perform full segmentation.
 
@@ -150,8 +174,8 @@ if __name__ == "__main__":
 
     # test example
     test_image_path = (
-        f"{SHARED_REMOTE_DIR}/synthetic_seg_data/datasets/test/images/"
-        "ffbf668a-bbc7-4a3f-aae2-98886f43e610.jpg"
+        f"{SHARED_REMOTE_DIR}/synthetic_seg_data/dataset_4k/segmentation/dest/test/images/"
+        "ffd495f4-8e83-46df-8bca-5adf7415681a.jpg"
     )
 
     # tested both SAM and YOLO
@@ -174,5 +198,5 @@ if __name__ == "__main__":
     For SAM: foreground segmentation
     For YOLO: single mask with all pill having their own indices
     """
-    results_full = countSegmentObj.segment
-    result_masked_ROI = countSegmentObj.masked_ROIs
+    results_mask = countSegmentObj.segmentation
+    countSegmentObj.visualize_segmentation()

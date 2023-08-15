@@ -3,3 +3,4 @@ segmentation:
     model_type: YOLO
     model_ckpt: /media/RxConnectShared/checkpoints/segmentation/best.pt
     score_thresh: 0.7 # confidence score for postprocessing
+    imgsz_setting: [640, 640]

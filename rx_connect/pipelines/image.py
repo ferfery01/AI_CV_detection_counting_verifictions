@@ -8,6 +8,7 @@ import torchshow as ts
 from PIL import Image
 from skimage import io
 
+from rx_connect.core.images.visualize import visualize_gallery
 from rx_connect.core.types.detection import CounterModuleOutput
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.generator import RxImageGenerator
@@ -162,11 +163,7 @@ class RxVisionDetect(RxVisionBase):
         if labels is not None:
             show_imgs = [label_img(img, labels[i]) for i, img in enumerate(show_imgs)]
 
-        show_img_reordered = [
-            show_imgs[i * img_per_row : i * img_per_row + img_per_row]
-            for i in range(-(len(show_imgs) // -img_per_row))
-        ]
-        ts.show(show_img_reordered)
+        visualize_gallery(show_imgs, img_per_row=img_per_row)
 
     def draw_bounding_boxes(self) -> np.ndarray:
         """Utility function to draw bounding boxes on the image."""
@@ -219,7 +216,7 @@ class RxVisionSegment(RxVisionDetect):
 
     _full_mask: Optional[np.ndarray] = None
     _masked_ROIs: Optional[List[np.ndarray]] = None
-    _detail_ROI_seg: Optional[List[np.ndarray]] = None
+    _ROI_masks: Optional[List[np.ndarray]] = None
 
     def __init__(self) -> None:
         super().__init__()
@@ -229,7 +226,7 @@ class RxVisionSegment(RxVisionDetect):
         super()._reset()
         self._full_mask = None
         self._masked_ROIs = None
-        self._detail_ROI_seg = None
+        self._ROI_masks = None
 
     def set_segmenter(self, segmenterObj: RxSegmentation) -> None:
         """Sets the segmenter object. Reset any existing results to None when there's a new segmenter.
@@ -240,25 +237,22 @@ class RxVisionSegment(RxVisionDetect):
         self._segmenterObj = segmenterObj
         self._reset()
 
-    def visualize_background(self) -> None:
-        """Visualize the background segment."""
-        ts.show([self.image, self.segment])
+    def visualize_full_segmentation(self) -> None:
+        """Visualizd the full segment results (one single binary mask).
+        For now, only call it when using SAM for full segment.
+        """
+        ts.show(self.full_segmentation)
+
+    def visualize_ROI_segmentation(self, img_per_row: int = 5) -> None:
+        """Visualize the segment results (binary masks for each ROI)."""
+        visualize_gallery(self.ROI_segmentation, img_per_row=img_per_row)
 
     def visualize_masked_ROIs(self, img_per_row: int = 5) -> None:
-        """Visualize the cropped segmentations.
-
-        Args:
-            img_per_row (int): The number of images per row.
-        """
-        show_imgs = self.masked_ROIs
-        show_img_reordered = [
-            show_imgs[i * img_per_row : i * img_per_row + img_per_row]
-            for i in range(-(len(show_imgs) // -img_per_row))
-        ]
-        ts.show(show_img_reordered)
+        """Visualize the masked ROIs."""
+        visualize_gallery(self.masked_ROIs, img_per_row=img_per_row)
 
     @property
-    def segment(self) -> np.ndarray:
+    def full_segmentation(self) -> np.ndarray:
         """
         Run full segmentation with SAM to separate forground/background.
         From the segmentation results, choose the one containing all pills.
@@ -268,44 +262,12 @@ class RxVisionSegment(RxVisionDetect):
         """
         if self._full_mask is None:
             assert self._segmenterObj is not None, "Segmenter object not set."
-            mask = self._segmenterObj.segment_full(self.image)
+            assert self._segmenterObj._model_type == "SAM", "Not using SAM for full seg."
+            mask = self._segmenterObj.segment(self.image)
             # x = column, y = row, so need to reverse the order
             self._full_mask = cv2.resize(mask, self.image.shape[:2][::-1])
 
         return self._full_mask
-
-    @property
-    def cropped_masks(self) -> List[np.ndarray]:
-        """
-        Return the cropped mask from the full segment mask.
-
-        Returns:
-            List[np.ndarray]: The cropped masks from the full segment mask
-        """
-        bbox_xyxy_list = [item.bbox for item in self.bounding_boxes]
-        cropped_masks = [self.segment[y1:y2, x1:x2] for (x1, y1, x2, y2) in bbox_xyxy_list]
-
-        if self._segmenterObj is not None and self._segmenterObj._model_type == "YOLO":
-            all_cropped_masks = []
-            for cropped_mask in cropped_masks:
-                # Filter out the value 0 from the array
-                values, counts = np.unique(cropped_mask, return_counts=True)
-                unique_values = [v for v in values if v != 0]
-                unique_counts = [c for (c, v) in zip(counts, values) if v != 0]
-
-                if len(unique_values) == 0:
-                    logger.info("detection bbox does not find any instance for segmentation.")
-                    all_cropped_masks.append(np.ones(cropped_mask.shape).astype(np.int8))
-                else:
-                    # Find the most occurred value besides 0
-                    most_occurred_value = unique_values[np.argmax(unique_counts)]
-
-                    # Set all other pixels to 0 except for the pixels with the most value
-                    all_cropped_masks.append(np.array(cropped_mask == most_occurred_value, dtype=np.int8))
-
-            cropped_masks = all_cropped_masks
-
-        return cropped_masks
 
     @property
     def masked_ROIs(self) -> List[np.ndarray]:
@@ -315,25 +277,33 @@ class RxVisionSegment(RxVisionDetect):
         Returns:
             List[np.ndarray]: The ROIs with background removed.
         """
-
         if self._masked_ROIs is None:
             self._masked_ROIs = cast(
                 List[np.ndarray],
-                [cv2.bitwise_or(ROI, ROI, mask=mask) for ROI, mask in zip(self.ROIs, self.cropped_masks)],
+                [cv2.bitwise_or(ROI, ROI, mask=mask) for ROI, mask in zip(self.ROIs, self.ROI_segmentation)],
             )
         return self._masked_ROIs
 
     @property
     def ROI_segmentation(self) -> List[np.ndarray]:
         """Check if the ROI segmentation has been produced. If not, segment before returning it.
+        If using SAM, crop the ROI masks from the full segmentation mask, using the bbox from detection module.
+        If using YOLO, directly segment from the ROI image.
 
         Returns:
             List[np.ndarray]: Segmentation results for each ROI.
         """
-        if self._detail_ROI_seg is None:
+        if self._ROI_masks is None:
             assert self._segmenterObj is not None, "Segmenter object not set."
-            self._detail_ROI_seg = [self._segmenterObj.segment_full(ROI) for ROI in self.ROIs]
-        return self._detail_ROI_seg
+            if self._segmenterObj._model_type == "SAM":
+                bbox_xyxy_list = [item.bbox for item in self.bounding_boxes]
+                self._ROI_masks = [
+                    self.full_segmentation[y1:y2, x1:x2] for (x1, y1, x2, y2) in bbox_xyxy_list
+                ]
+            else:  # YOLO
+                self._ROI_masks = [self._segmenterObj.segment(ROI) for ROI in self.ROIs]
+
+        return self._ROI_masks
 
 
 class RxVisionVerify(RxVisionSegment):

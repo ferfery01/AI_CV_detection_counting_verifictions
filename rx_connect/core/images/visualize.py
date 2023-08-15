@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -100,3 +100,17 @@ def visualize_masks(
 
     # Display the plot
     plt.show()
+
+
+def visualize_gallery(show_imgs: List[np.ndarray], img_per_row: int = 5) -> None:
+    """Visualizes a series of image, print them 5 (or as specified) per row.
+
+    Args:
+        show_imgs (List[np.ndarray]): the list of images to visualize.
+        img_per_row (5): the number of images to visualize in each row.
+    """
+    show_img_reordered = [
+        show_imgs[i * img_per_row : i * img_per_row + img_per_row]
+        for i in range(-(len(show_imgs) // -img_per_row))
+    ]
+    ts.show(show_img_reordered)
