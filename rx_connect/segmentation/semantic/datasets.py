@@ -5,13 +5,13 @@ from typing import Any, ClassVar, Dict, Optional, Tuple, Union
 import lightning as L
 import numpy as np
 import torch
-from albumentations.pytorch.transforms import ToTensorV2
 from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from skimage.io import imread
 from skimage.transform import resize
 from torch.utils.data import DataLoader, Dataset
 
 from rx_connect.core.augments import BasicAugTransform
+from rx_connect.core.images.io import img_to_tensor
 from rx_connect.core.utils.io_utils import get_matching_files_in_dir
 from rx_connect.segmentation.semantic.augments import SegmentTransform
 
@@ -111,12 +111,11 @@ class SegDataset(Dataset):
         if self.transforms is not None:
             image_tensor, mask_tensor = self.transforms(image, mask)
         else:
-            image_tensor = ToTensorV2()(image=image)["image"]
-            mask_tensor = ToTensorV2()(image=mask)["mask"]
+            image_tensor, mask_tensor = img_to_tensor(image), img_to_tensor(mask)
 
         return {
             "image": image_tensor,  # (B, 3, H, W)
-            "mask": mask_tensor.long(),  # (B, 1, H, W)
+            "mask": mask_tensor,  # (B, 1, H, W)
         }
 
     @staticmethod
@@ -153,7 +152,7 @@ class SegDataset(Dataset):
 class SegDataModule(L.LightningDataModule):
     def __init__(
         self,
-        root_dir: Path,
+        root_dir: Union[str, Path],
         image_size: Tuple[int, int],
         batch_size: int,
         num_workers: int = 8,
@@ -161,7 +160,7 @@ class SegDataModule(L.LightningDataModule):
         **kwargs: Any,
     ) -> None:
         super().__init__()
-        self.root_dir = root_dir
+        self.root_dir = Path(root_dir)
         self.image_size = image_size
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -173,9 +172,7 @@ class SegDataModule(L.LightningDataModule):
         self.train_transforms = SegmentTransform(
             train=True, normalize=True, image_size=self.image_size, aspect_ratio=aspect_ratio, **self.kwargs
         )
-        self.val_transforms = SegmentTransform(
-            train=False, normalize=True, image_size=self.image_size, **self.kwargs
-        )
+        self.val_transforms = SegmentTransform(train=False, normalize=True, image_size=self.image_size)
 
     def setup(self, stage: Optional[str] = None) -> None:
         if stage == "fit" or stage is None:

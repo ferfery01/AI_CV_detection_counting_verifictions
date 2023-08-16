@@ -18,26 +18,23 @@ class BasicAugTransform(ABC):
     """
 
     train: bool = True
-    """Whether the transform is for training or not.
+    """Whether the transform is for training or validation/testing.
     """
     normalize: bool = True
-    """Whether to normalize images.
+    """Whether to normalize the image.
     """
-
-    def __init__(self) -> None:
-        super().__init__()
 
     def init_final_transforms(self, normalize: bool) -> A.Compose:
         """Initialize the final transforms to apply. If `normalize` is True, then the final
         transform will include normalization. Otherwise, it will only convert the image to a
         tensor.
         """
-        if normalize:
-            return A.Compose(
-                [A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), ToTensorV2()]
-            )
-        else:
-            return ToTensorV2()
+        tfms = (
+            [A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), ToTensorV2()]
+            if normalize
+            else [ToTensorV2()]
+        )
+        return A.Compose(tfms)
 
     def show_transforms(
         self,

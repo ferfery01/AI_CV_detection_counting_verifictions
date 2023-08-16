@@ -44,11 +44,11 @@ def to_tuple(x: N) -> Tuple[N, N]:
 
 
 @overload
-def to_tuple(x: Tuple[N, ...]) -> Tuple[N, N]:
+def to_tuple(x: Sequence[N]) -> Tuple[N, N]:
     ...
 
 
-def to_tuple(x: Optional[Union[N, Tuple[N, ...]]]) -> Optional[Tuple[N, N]]:
+def to_tuple(x: Optional[Union[N, Sequence[N]]]) -> Optional[Tuple[N, N]]:
     """Converts the input argument to a tuple. If the input is already a tuple, then it is
     returned as it is. If the input is a number, then a tuple of length 2 is returned with the
     same number repeated twice.

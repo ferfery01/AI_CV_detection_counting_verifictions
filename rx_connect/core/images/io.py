@@ -5,6 +5,7 @@ from typing import List, Union
 
 import numpy as np
 import requests
+import torch
 from PIL import Image
 from skimage.io import imread
 from tqdm import tqdm
@@ -79,3 +80,25 @@ def load_image(image_path: Union[str, Path]) -> np.ndarray:
         image = image[idx, :, :, :3]
 
     return image
+
+
+def img_to_tensor(image: np.ndarray, dtype: type = np.float32) -> torch.Tensor:
+    """Converts numpy image (RGB, BGR, Grayscale, Mask) to a `torch.Tensor`. The numpy `HWC`
+    image is converted to `CHW` tensor. If the image is in `HW` format (grayscale, mask), it will
+    be converted to pytorch `HW` tensor.
+
+    Args:
+        image (np.ndarray): The image to convert.
+        dtype (np.dtype, optional): The dtype of the tensor. Defaults to np.float32.
+
+    Returns:
+        torch.Tensor of shape (C, H, W) or (H, W).
+    """
+    if image.ndim not in (2, 3):
+        raise ValueError(f"Image must have shape (H, W) or (H, W, C), got {image.shape}")
+
+    if image.ndim == 2:
+        image = np.expand_dims(image, axis=-1)
+
+    image = image.transpose((2, 0, 1))
+    return torch.from_numpy(image.astype(dtype, copy=False)).float()
