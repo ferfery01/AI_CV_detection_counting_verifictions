@@ -5,7 +5,7 @@ import cv2
 import gradio as gr
 import numpy as np
 
-from rx_connect import CACHE_DIR, PIPELINES_DIR
+from rx_connect import CACHE_DIR
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.pipelines.image import RxVision
@@ -41,7 +41,7 @@ def demo_init() -> None:
         counterObj = RxDetection()
 
         logger.info("\tPreparing segmentation tool...")
-        segmentObj = RxSegmentation(cfg=f"{PIPELINES_DIR}/configs/Dev/segment_SAM_config.yml")
+        segmentObj = RxSegmentation()
 
         logger.info("\tPreparing vectorization tool...")
         vectorizerObj = RxVectorizerML()
@@ -101,15 +101,15 @@ def demo_detect() -> Tuple[List[np.ndarray], np.ndarray]:
     return ROI, BB
 
 
-def demo_segment() -> Tuple[List[np.ndarray], np.ndarray]:
+def demo_segment() -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """
     Demo event function - segment trigger button.
     """
     logger.info("Segmentation started...")
     with timer() as t:
-        mROI, mFull = IMAGE_OBJ.masked_ROIs, IMAGE_OBJ.segment
+        mROI, ROI_mask = IMAGE_OBJ.masked_ROIs, IMAGE_OBJ.ROI_segmentation
     logger.info(f"...Segmentation finished. Spent {t.duration:.2f} seconds.")
-    return mROI, mFull * 255
+    return mROI, [mask * 255 for mask in ROI_mask]
 
 
 def demo_verify() -> list[tuple[np.ndarray, str]]:
@@ -200,7 +200,9 @@ def create_demo() -> gr.Blocks:
         with gr.Tab("Segmentation"):
             with gr.Row():
                 gallery_mROI = gr.Gallery(label="Masked ROIs", columns=5, object_fit="scale-down", height=480)
-                image_mFull = gr.Image(label="Bachground segmentations", height=480)
+                gallery_ROImask = gr.Gallery(
+                    label="ROI segmentation", columns=5, object_fit="scale-down", height=480
+                )
             image_segment_button = gr.Button("Segment", variant="primary")
         with gr.Tab("Verification"):
             gallery_scores = gr.Gallery(
@@ -239,7 +241,7 @@ def create_demo() -> gr.Blocks:
         )
         image_gen_button.click(demo_gen_image, inputs=None, outputs=[image_input, image_ref])
         image_detect_button.click(demo_detect, None, [gallery_ROI, image_BB])
-        image_segment_button.click(demo_segment, None, [gallery_mROI, image_mFull])
+        image_segment_button.click(demo_segment, None, [gallery_mROI, gallery_ROImask])
         image_verify_button.click(demo_verify, None, gallery_scores)
         stream_start_button.click(demo_start_streaming, None, streaming_source)
         stream_stop_button.click(demo_stop_streaming, streaming_source, [streaming_source, image_input])
