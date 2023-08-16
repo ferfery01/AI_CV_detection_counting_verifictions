@@ -5,10 +5,9 @@ import albumentations as A
 import numpy as np
 import torch
 from albumentations.core.transforms_interface import ImageOnlyTransform, to_tuple
-from albumentations.pytorch.transforms import ToTensorV2
 
 from rx_connect.core.augments import BasicAugTransform
-from rx_connect.core.transforms_utils import rotate_image
+from rx_connect.core.images.transforms import rotate_image
 
 
 class CustomSigmoidContrast(ImageOnlyTransform):
@@ -44,14 +43,8 @@ class RefConsTransform(BasicAugTransform):
     consumer images.
     """
 
-    train: bool = True
-    """Whether to apply augmentations during training or evaluation.
-    """
     add_perspective: bool = False
     """Whether to add perspective distortion to images.
-    """
-    normalize: bool = True
-    """Whether to normalize images.
     """
     rot_angle: int = 180
     """The maximum angle of rotation to apply to images.
@@ -80,7 +73,7 @@ class RefConsTransform(BasicAugTransform):
         self.ref_seq = self.init_ref_seq()
         self.cons_seq = self.init_cons_seq()
 
-        self.final_transforms = self.init_final_transforms()
+        self.final_transforms = self.init_final_transforms(self.normalize)
         self.ref_transforms = self.init_ref_transform()
         self.cons_transforms = self.init_cons_transform()
 
@@ -169,18 +162,6 @@ class RefConsTransform(BasicAugTransform):
             ],
             p=1.0,
         )
-
-    def init_final_transforms(self) -> A.Compose:
-        """Define the final transforms for both reference and consumer images."""
-        if self.normalize:
-            return A.Compose(
-                [
-                    A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                    ToTensorV2(),
-                ]
-            )
-        else:
-            return ToTensorV2()
 
     def init_ref_transform(self) -> A.Compose:
         """Define the final transforms for reference images."""

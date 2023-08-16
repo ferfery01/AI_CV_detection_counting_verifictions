@@ -3,6 +3,7 @@ from typing import Optional, Sequence, Union
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
+from scipy.ndimage import rotate
 
 
 def pad_image(image: np.ndarray, pad_width: int, pad_value: int = 0) -> np.ndarray:
@@ -112,3 +113,24 @@ def resize_and_center(
     padded_image = TF.pad(resized_image, (pad_left, pad_top, pad_right, pad_bottom), fill=fill)
 
     return padded_image
+
+
+def rotate_image(image: np.ndarray, angle: int = 0) -> np.ndarray:
+    """Rotate an image by a certain angle and return the result as an np.uint8 array.
+
+    Args:
+        image: The image to rotate. Must be an np.uint8 array.
+        angle: The angle to rotate the image, in degrees. Positive values rotate counter-
+            clockwise, and negative values rotate clockwise.
+
+    Returns:
+        The rotated image as an np.uint8 array.
+    """
+
+    # Rotate the image
+    rotated_image = rotate(image, angle, reshape=False)
+
+    # Ensuring that all values are within the correct range
+    rotated_image = np.clip(rotated_image, 0, 255)
+
+    return rotated_image.astype(np.uint8)  # Convert to uint8
