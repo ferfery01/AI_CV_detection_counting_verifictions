@@ -15,6 +15,9 @@ from rx_connect.tools.timers import timer
 
 logger = logging.Logger("Demo_logger")
 log_file = CACHE_DIR / "demo_v2.log"
+if not log_file.exists():
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    log_file.touch()
 logger.addHandler(logging.FileHandler(log_file))
 
 IMAGE_OBJ = RxVision()

@@ -82,9 +82,10 @@ class RxSegmentation(RxBase):
             # is sensitive to scale of the pills,
             # so do padding to ensure the scale or the pill in ROI is similar
             self._img_height_setting, self._img_width_setting = self._imgsz_setting
+            self._img_height, self._img_width = image.shape[:2]
             self._height_diff, self._width_diff = (
-                self._img_height_setting - image.shape[0],
-                self._img_width_setting - image.shape[1],
+                self._img_height_setting - self._img_height,
+                self._img_width_setting - self._img_width,
             )
             # for height: both top and bottom needs offset: height_diff//2
             # (might having subpixel, use minus to get the remaining pixel for another offset)
@@ -139,11 +140,18 @@ class RxSegmentation(RxBase):
         else:
             # since we are doing ROI segment now, just pick the first mask (highest confidence) and discard other pillls
             # if later on we need to consider other pills, just pick the remaining masks
-            predicton = prediction.masks.masks[0].astype(np.int8)
+
+            # the region needs to be cropped back to the original size
             bottom_place = self._img_height_setting - (self._height_diff - self._height_offset)
             right_place = self._img_width_setting - (self._width_diff - self._width_offset)
 
-            return predicton[self._height_offset : bottom_place, self._width_offset : right_place]
+            try:
+                prediction = prediction.masks.masks[0].astype(np.int8)
+            except AttributeError:
+                # if the prediction is none, generate an all-one mask
+                prediction = np.ones((self._img_height_setting, self._img_width_setting), np.int8)
+
+            return prediction[self._height_offset : bottom_place, self._width_offset : right_place]
 
     @timer()
     def segment(self, image: np.ndarray) -> np.ndarray:
@@ -198,5 +206,5 @@ if __name__ == "__main__":
     For SAM: foreground segmentation
     For YOLO: single mask with all pill having their own indices
     """
-    results_mask = countSegmentObj.segmentation
-    countSegmentObj.visualize_segmentation()
+    results_mask = countSegmentObj.ROI_segmentation
+    countSegmentObj.visualize_ROI_segmentation()
