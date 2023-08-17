@@ -38,21 +38,21 @@ class SegDataset(Dataset):
         │   │   ├── 0001.jpg
         │   │   ├── ...
         │   ├── comp_masks
-        │   │   ├── 0001.npy
+        │   │   ├── 0001.png
         │   │   ├── ...
         ├── val
         │   ├── images
         │   │   ├── 0001.jpg
         │   │   ├── ...
         │   ├── comp_masks
-        │   │   ├── 0001.npy
+        │   │   ├── 0001.png
         │   │   ├── ...
         ├── test
         │   ├── images
         │   │   ├── 0001.jpg
         │   │   ├── ...
         │   ├── comp_masks
-        │   │   ├── 0001.npy
+        │   │   ├── 0001.png
         │   │   ├── ...
 
     Attributes:
@@ -123,7 +123,7 @@ class SegDataset(Dataset):
         """Load mask from path and resize it to img_size. The mask is resized using nearest neighbor
         interpolation.
         """
-        mask = np.load(path)
+        mask = imread(path)
 
         # Assign all non-zero values to 1
         mask[mask > 0] = 1

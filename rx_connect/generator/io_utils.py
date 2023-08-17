@@ -8,6 +8,7 @@ from skimage import io
 
 from rx_connect import CACHE_DIR
 from rx_connect.core.types.generator import SEGMENTATION_LABELS, PillMask, PillMaskPaths
+from rx_connect.core.utils.io_utils import get_matching_files_in_dir
 from rx_connect.generator.transform import resize_bg
 from rx_connect.tools import is_remote_dir
 from rx_connect.tools.data_tools import (
@@ -72,8 +73,8 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
         imgs_path = fetch_file_paths_from_remote_dir(data_dir / "images")
         masks_path = fetch_file_paths_from_remote_dir(data_dir / "masks")
     else:
-        imgs_path = list((data_dir / "images").glob("*.jpg"))
-        masks_path = list((data_dir / "masks").glob("*.[jp][pn]g"))
+        imgs_path = get_matching_files_in_dir(data_dir / "images", "*.jpg")
+        masks_path = get_matching_files_in_dir(data_dir / "masks", "*.[jp][pn]g")
         """New masks are saved as PNG format as it can handle binary data without loss of information.
         However, old masks are saved as JPG format. Hence, we need to check for both formats.
         """
@@ -108,7 +109,7 @@ def load_comp_mask_paths(data_dir: Union[str, Path]) -> List[Path]:
     if is_remote_dir(data_dir):
         masks_path = fetch_file_paths_from_remote_dir(data_dir / SEGMENTATION_LABELS)
     else:
-        masks_path = list((data_dir / SEGMENTATION_LABELS).glob("*.npy"))
+        masks_path = get_matching_files_in_dir(data_dir / SEGMENTATION_LABELS, "*.png")
 
     # Sort the file paths to ensure that the images and masks are aligned
     masks_path = sorted(masks_path)

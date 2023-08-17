@@ -88,8 +88,8 @@ def overlay_image_onto_background(
     mask_rgb = np.stack([mask_bool] * 3, axis=-1)
 
     # Compute the effective dimensions of the overlay within the bounds of the background
-    eff_width = min([pill_width, pill_width + x_coord, bg_width - x_coord])
-    eff_height = min([pill_height, pill_height + y_coord, bg_height - y_coord])
+    eff_width = min([pill_width, pill_width + x_coord, bg_width - x_coord, bg_width])
+    eff_height = min([pill_height, pill_height + y_coord, bg_height - y_coord, bg_height])
 
     # Compute the effective regions in both the background and overlay images
     bg_top_x, bg_top_y = max(0, x_coord), max(0, y_coord)

@@ -5,8 +5,8 @@ from uuid import uuid4
 
 import click
 import cv2
-import numpy as np
 from joblib import Parallel, delayed
+from PIL import Image
 from tqdm import trange
 
 from rx_connect import SHARED_RXIMAGE_DATA_DIR
@@ -72,9 +72,10 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
         with (output_folder / mode / "pill_info.csv").open("a") as f:
             f.write(f"{_id}.jpg: {', '.join(str(path) for path in generator.sampled_images_path)}\n")
 
-    # Save instance segmentation masks
+    # Save instance segmentation masks as PIL images
     if mode in ("both", "segmentation"):
-        np.save(f"{output_folder}/{mode}/{SEGMENTATION_LABELS}/{_id}.npy", mask_comp)
+        mask_comp_pl = Image.fromarray(mask_comp).convert("L")
+        mask_comp_pl.save(f"{output_folder}/{mode}/{SEGMENTATION_LABELS}/{_id}.png")
 
 
 @click.command()

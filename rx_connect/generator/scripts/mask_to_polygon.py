@@ -6,6 +6,7 @@ import click
 import cv2
 import numpy as np
 from joblib import Parallel, delayed
+from skimage.io import imread
 from tqdm import tqdm
 
 from rx_connect import ROOT_DIR
@@ -48,7 +49,7 @@ def mask_to_polygon(mask_path: Path, output_path: Path, eps: float) -> None:
         eps (float): the approximation accuracy of the polygon
     """
     # Load the mask data and get the number of pills
-    mask = np.load(mask_path)
+    mask = imread(mask_path)
     n_pills = np.max(mask)
     heigth, width = mask.shape
 

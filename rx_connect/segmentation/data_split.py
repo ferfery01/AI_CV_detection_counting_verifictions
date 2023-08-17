@@ -33,7 +33,7 @@ datasets/
     │   │   ├── img_0.txt
     │   │   ├── ...
     │   └── masks
-    │       ├── img_0.npy
+    │       ├── img_0.png
     │       ├── ...
     ├── train
     │   ├── images
@@ -43,7 +43,7 @@ datasets/
     │   │   ├── img_0.txt
     │   │   ├── ...
     │   └── masks
-    │       ├── img_0.npy
+    │       ├── img_0.png
     │       ├── ...
     |── val
     │   ├── images
@@ -53,7 +53,7 @@ datasets/
     │   │   ├── img_0.txt
     │   │   ├── ...
     │   └── masks
-    │       ├── img_0.npy
+    │       ├── img_0.png
     │       ├── ...
 """
 
@@ -102,7 +102,7 @@ def split_dataset(
 
         # Get the corresponding mask and label files and symlink them to dest folder
         if mask_dir is not None:
-            mask_file = mask_dir / f"{image_file.stem}.npy"
+            mask_file = mask_dir / f"{image_file.stem}.png"
             assert mask_file.exists(), f"mask file {mask_file.name} is not in {mask_dir}."
             (dest_folder / "masks" / mask_file.name).symlink_to(mask_file.resolve())
         if anno_dir is not None:
