@@ -1,31 +1,19 @@
-# === Install torch and torchvision ===
---find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.13.1; sys_platform == "darwin"
-torch==1.13.1+cu117; sys_platform == "linux"
-torchvision==0.14.1; sys_platform == "darwin"
-torchvision==0.14.1+cu117; sys_platform == "linux"
+# == Install all the training requirements ==
+-r requirements-training.txt
 
 # === Install other dependencies ===
-albumentations==1.3.1
 av==10.0.0
 beautifulsoup4==4.12.2
 click==8.1.6
+determined==0.23.0
 gradio==3.37.0
 joblib==1.2.0
 lightning==2.0.6
 matplotlib==3.7.1
-numpy==1.23.0
 omegaconf==2.3.0
-opencv-contrib-python==4.7.0.72
-pandas==2.0.2
-Pillow==10.0.0
 rich==13.4.1
-scikit-image==0.21.0
-scikit-learn==1.2.2
-segmentation-models-pytorch==0.3.3
 segment-anything @ git+https://github.com/facebookresearch/segment-anything.git
 super_gradients==3.1.3
-torchmetrics==0.8.0
 torchshow==0.5.1
 transformers==4.30.1
 ultralytics==8.0.38

@@ -36,10 +36,11 @@ MANIFEST
 # Cache
 **/local_cache/**
 **/.cache/**
+**/mypy_cache/**
 
 # Checkpoints
 **/checkpoints/**
-*.pth*
+*.pt*
 **/wandb/**
 
 # Logs
@@ -61,4 +62,5 @@ dataset/**
 examples/
 
 # Test scripts
+**/notebooks/**
 *test*.ipynb
