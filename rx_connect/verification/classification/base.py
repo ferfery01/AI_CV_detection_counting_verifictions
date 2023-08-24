@@ -1,10 +1,10 @@
 from enum import Enum, auto
 from typing import Any, Dict, Optional, Type, Union
 
+import timm
 import torch
 import torch.nn as nn
-from torchvision.models import get_model
-from torchvision.models.resnet import ResNet
+from timm.models.resnet import ResNet
 
 from rx_connect.verification.classification.pooling import GlobalAvgPool
 
@@ -19,7 +19,7 @@ class ResnetComponents(nn.Module):
     def __init__(self, basemodel: ResNet) -> None:
         super().__init__()
         self.features = nn.Sequential(*list(basemodel.children())[:-2])
-        self.pool = basemodel.avgpool
+        self.pool = basemodel.global_pool
         self.classifier = basemodel.fc
         self.pool_dim = basemodel.fc.weight.size(1)
 
@@ -40,7 +40,7 @@ class BaseModel(nn.Module):
         """
         super().__init__()
         self.arch = arch
-        basemodel = get_model(arch, weights="DEFAULT" if pretrained else None)
+        basemodel = timm.create_model(arch, pretrained=pretrained)
 
         backbone = self._reconstruct_resnet(basemodel)
         self.features = backbone.features

@@ -1,0 +1,50 @@
+---
+name: semantic_seg_const
+description: Segmentation Experiment with batch size 64
+max_restarts: 0
+
+checkpoint_storage:
+    host_path: /mnt/share/RxConnect/checkpoints
+    storage_path: semantic_segmentation
+    type: shared_fs
+
+data:
+    url: https://drive.google.com/file/d/1sVXW1UirpDvzMANyV9M4zaIqaia2X-Mo/view?usp=sharing
+    md5: c931b863f1aec03030831562a2d44547
+    download_dir: /mnt/share/RxConnect
+    force_download: false
+    filename: RxImage_Segment.zip
+    num_workers: 12
+    image_size:
+        - 416
+        - 720
+
+hyperparameters:
+    encoder: resnet18
+    global_batch_size: 64
+    initial_lr: 0.001
+    lr_patience: 2
+    lr_factor: 0.1
+    optimizer: AdamW
+    weight_decay: 0.0001
+
+profiling:
+    begin_on_batch: 0
+    enabled: true
+    end_after_batch:
+    sync_timings: true
+
+searcher:
+    name: single
+    metric: val_loss
+    smaller_is_better: true
+    max_length:
+        epochs: 1
+
+debug: false
+entrypoint: rx_connect.segmentation.semantic.model_def:SegTrial
+workspace: workspace1
+project: Semantic_Segmentation
+resources:
+    resource_pool: workspace1
+    slots_per_trial: 1

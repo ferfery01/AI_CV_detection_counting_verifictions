@@ -15,8 +15,8 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.loggers import Logger, WandbLogger
 
 from rx_connect.core.utils.func_utils import to_tuple
-from rx_connect.segmentation.semantic.datasets import SegDataModule
-from rx_connect.segmentation.semantic.model import SegModel
+from rx_connect.segmentation.semantic.archive.datasets import SegDataModule
+from rx_connect.segmentation.semantic.archive.model import SegModel
 from rx_connect.tools.device import DeviceType, get_device_type, parse_cuda_for_devices
 from rx_connect.tools.env_setup import set_max_open_files_limit
 from rx_connect.tools.logging import setup_logger

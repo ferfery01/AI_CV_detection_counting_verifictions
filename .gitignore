@@ -52,6 +52,7 @@ ePill**/
 dataset/**
 **/synthetic/**
 **/labels/**
+**/Pill_Samples/**
 
 # Images
 *.jpg
