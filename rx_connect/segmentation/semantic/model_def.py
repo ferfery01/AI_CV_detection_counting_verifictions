@@ -60,13 +60,12 @@ class SegTrial(PyTorchTrial):
                 md5=self.data_config.get("md5"),
             )
 
-        aspect_ratio = self.image_size[1] / self.image_size[0]
         tfms = SegmentTransform(
             train=split == DatasetSplit.TRAIN,
             image_size=self.image_size,
-            aspect_ratio=aspect_ratio,
-            **self.data_config.get("kwargs", {}),
+            **self.data_config.get("tfm_kwargs", {}),
         )
+
         return SegDataset(
             root_dir=dataset_dir,
             data_split=split,

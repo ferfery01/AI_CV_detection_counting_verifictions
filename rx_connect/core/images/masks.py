@@ -1,5 +1,33 @@
+from typing import TypeVar
+
 import cv2
 import numpy as np
+import torch
+
+T = TypeVar("T", np.ndarray, torch.Tensor)
+
+
+def to_three_channels(mask: T) -> T:
+    """Converts a single channel mask to a three-channel mask. The resulting mask will have the
+    same value for all three channels. This is useful for visualizing the mask on the image.
+
+    Args:
+        mask (T): The single channel mask to convert.
+
+    Returns:
+        T: The three-channel mask.
+
+    Raises:
+        TypeError: If the type of the mask is not supported.
+        AssertionError: If the mask is not a single channel mask.
+    """
+    assert mask.ndim == 2, "Must be a single channel mask"
+    if isinstance(mask, torch.Tensor):
+        return mask.repeat(3, 1, 1)
+    elif isinstance(mask, np.ndarray):
+        return np.repeat(mask[..., None], 3, axis=2)
+    else:
+        raise TypeError("Unsupported type for mask")
 
 
 def generate_grayscale_mask(image: np.ndarray, thresh: int = 0) -> np.ndarray:

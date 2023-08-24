@@ -2,10 +2,8 @@ from enum import Enum
 from pathlib import Path
 from typing import ClassVar, Dict, Optional, Tuple, Union
 
-import numpy as np
 import torch
 from skimage.io import imread
-from skimage.transform import resize
 from torch.utils.data import Dataset
 
 from rx_connect.core.augments import BasicAugTransform
@@ -34,23 +32,25 @@ class SegDataset(Dataset):
         │   ├── images
         │   │   ├── 0001.jpg
         │   │   ├── ...
-        │   ├── comp_masks
-        │   │   ├── 0001.png
-        │   │   ├── ...
+        │   └── comp_masks
+        │       ├── 0001.png
+        │       ├── ...
+        │
         ├── val
         │   ├── images
         │   │   ├── 0001.jpg
         │   │   ├── ...
-        │   ├── comp_masks
-        │   │   ├── 0001.png
-        │   │   ├── ...
-        ├── test
-        │   ├── images
-        │   │   ├── 0001.jpg
-        │   │   ├── ...
-        │   ├── comp_masks
-        │   │   ├── 0001.png
-        │   │   ├── ...
+        │   └── comp_masks
+        │       ├── 0001.png
+        │       ├── ...
+        │
+        └─ test
+            ├── images
+            │   ├── 0001.jpg
+            │   ├── ...
+            └── comp_masks
+                ├── 0001.png
+                ├── ...
 
     Attributes:
         root_dir (Union[str, Path]): Path to the root directory containing the dataset splits.
@@ -71,6 +71,7 @@ class SegDataset(Dataset):
         DatasetSplit.VAL: "val",
         DatasetSplit.TEST: "test",
     }
+    _repr_indent: int = 4
 
     def __init__(
         self,
@@ -80,16 +81,17 @@ class SegDataset(Dataset):
         transforms: Optional[BasicAugTransform] = None,
     ) -> None:
         self.root_dir = Path(root_dir)
+        self.data_split = data_split
         self.image_size = image_size
         self.transforms = transforms
 
         # Variables containing list of all input image and ground truth mask paths
         self.image_paths = get_matching_files_in_dir(
-            dir_path=self.root_dir / self.SUBDIR_SPLIT[data_split] / self.SUBDIR_IMAGES,
+            dir_path=self.root_dir / self.SUBDIR_SPLIT[self.data_split] / self.SUBDIR_IMAGES,
             wildcard_patterns="*.jpg",
         )
         self.mask_paths = get_matching_files_in_dir(
-            dir_path=self.root_dir / self.SUBDIR_SPLIT[data_split] / self.SUBDIR_MASKS,
+            dir_path=self.root_dir / self.SUBDIR_SPLIT[self.data_split] / self.SUBDIR_MASKS,
             wildcard_patterns="*.png",
         )
         assert len(self.image_paths) == len(
@@ -101,8 +103,12 @@ class SegDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         # Read input image and ground truth mask
-        image = self._read_image(self.image_paths[idx], self.image_size)
-        mask = self._read_mask(self.mask_paths[idx], self.image_size)
+        image = imread(self.image_paths[idx])
+        mask = imread(self.mask_paths[idx])
+
+        # The dataset contains different pixel values for the different pills,
+        # and hence we need to convert them to binary masks
+        mask[mask > 0] = 1
 
         # Apply augmentations
         if self.transforms is not None:
@@ -115,32 +121,14 @@ class SegDataset(Dataset):
             "mask": mask_tensor,  # (B, 1, H, W)
         }
 
-    @staticmethod
-    def _read_mask(path: Union[str, Path], img_size: Tuple[int, int]) -> np.ndarray:
-        """Load mask from path and resize it to img_size. The mask is resized using nearest neighbor
-        interpolation.
-        """
-        mask = imread(path)
-
-        # Assign all non-zero values to 1
-        mask[mask > 0] = 1
-
-        # Resize using nearest neighbor interpolation
-        mask = resize(
-            mask, output_shape=img_size, mode="constant", order=0, preserve_range=True, anti_aliasing=True
-        )
-        assert mask.ndim == 2, f"The mask shape must be (H, W), but got {mask.shape}"
-
-        return mask
-
-    @staticmethod
-    def _read_image(path: Union[str, Path], img_size: Tuple[int, int]) -> np.ndarray:
-        """Load image from path and resize it to img_size. The image is resized using bilinear
-        interpolation. The final image is casted to uint8.
-        """
-        image = imread(path)
-        image = resize(image, output_shape=img_size, mode="constant", order=1, anti_aliasing=True)
-        image = (image * 255).astype(np.uint8)
-        assert image.ndim == 3, f"The image shape must be (H, W, C), but got {image.shape}"
-
-        return image
+    def __repr__(self) -> str:
+        head = self.__class__.__name__
+        body = [
+            f"Number of datapoints: {self.__len__()}",
+            f"Root location: {self.root_dir}",
+            f"Split: {self.data_split.name}",
+        ]
+        if self.transforms is not None:
+            body += [f"Transform: {repr(self.transforms)}"]
+        lines = [head] + [f"{' ' * self._repr_indent}{line}" for line in body]
+        return "\n".join(lines)

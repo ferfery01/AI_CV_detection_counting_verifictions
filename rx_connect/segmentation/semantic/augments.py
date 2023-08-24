@@ -25,11 +25,8 @@ class SegmentTransform(BasicAugTransform):
     image_size: Tuple[int, int] = (405, 720)
     """The target image size to resize to. Format: (height, width)
     """
-    aspect_ratio: float = 720 / 405
-    """The aspect ratio of the image to resize to.
-    """
-    min_max_height: Tuple[int, int] = (300, 400)
-    """The minimum and maximum height of the image to crop to.
+    pad_divisor: int = 16
+    """Ensures that the image dimensions are divisible by this number.
     """
 
     def __post_init__(self):
@@ -52,20 +49,22 @@ class SegmentTransform(BasicAugTransform):
         """Define the spatial transforms for augmentation."""
         spatial_tfms = A.Compose(
             [
+                A.Resize(self.height, self.width, always_apply=True),
                 A.RandomSizedCrop(
-                    self.min_max_height,
+                    min_max_height=(int(0.8 * self.height), self.height),
                     height=self.height,
                     width=self.width,
-                    w2h_ratio=self.aspect_ratio,
+                    w2h_ratio=self.width / self.height,
                     p=0.5,
                 ),
-                A.OneOf(
-                    [
-                        A.HorizontalFlip(p=0.5),
-                        A.VerticalFlip(p=0.5),
-                    ],
-                    p=0.5,
+                A.PadIfNeeded(
+                    min_height=None,
+                    min_width=None,
+                    pad_height_divisor=self.pad_divisor,
+                    pad_width_divisor=self.pad_divisor,
+                    always_apply=True,
                 ),
+                A.OneOf([A.HorizontalFlip(p=0.5), A.VerticalFlip(p=0.5)], p=0.5),
                 A.OneOf(
                     [
                         A.ElasticTransform(alpha=10, sigma=50, alpha_affine=50, p=0.5),
@@ -82,9 +81,12 @@ class SegmentTransform(BasicAugTransform):
         """Define the non-spatial transforms for augmentation."""
         color_seq = A.Compose(
             [
-                A.CLAHE(p=0.5),
+                A.CLAHE(clip_limit=8, tile_grid_size=(16, 16), p=0.25),
                 A.RandomBrightnessContrast(p=0.5),
-                A.RandomGamma(p=0.5),
+                A.RandomGamma(gamma_limit=(60, 140), p=0.25),
+                A.Emboss(p=0.25),
+                A.Blur(blur_limit=7, p=0.25),
+                A.GaussNoise(p=0.25),
             ]
         )
 

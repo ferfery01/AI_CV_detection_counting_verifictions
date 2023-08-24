@@ -45,8 +45,12 @@ class BasicAugTransform(ABC):
     ) -> None:
         """Show different transforms applied to an image and/or mask."""
         if mask is not None:
-            image_mask_t = [list(self(image, mask, **kwargs)) for _ in range(n_transforms)]
-            ts.show(image_mask_t)
+            # To visualize the pair of image and mask properly, the mask is first converted to
+            # a 3-channel image and is then concatenated to the image along the last axis.
+            # For better visualization, we iterate over the number of transforms and show the results
+            for _ in range(n_transforms):
+                image_t, mask_t = self(image, mask, **kwargs)
+                ts.show([image_t, mask_t])
         else:
             image_t = np.stack([self(image, **kwargs) for _ in range(n_transforms)])
             ts.show(image_t)
@@ -63,8 +67,9 @@ class BasicAugTransform(ABC):
 
         if masks is not None:
             assert len(images) == len(masks), "Number of images and masks must be the same."
-            image_mask_t = [list(self(image, mask, **kwargs)) for image, mask in zip(images, masks)]
-            ts.show(image_mask_t)
+            for image, mask in zip(images, masks):
+                image_t, mask_t = self(image, mask, **kwargs)
+                ts.show([image_t, mask_t])
         else:
             image_t = np.stack([self(image, **kwargs) for image in images])
             ts.show(image_t)
