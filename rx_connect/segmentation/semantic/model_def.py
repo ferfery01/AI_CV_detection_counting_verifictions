@@ -3,8 +3,15 @@ from typing import Any, Dict, cast
 
 import segmentation_models_pytorch as smp
 import torch
-from determined.pytorch import DataLoader, PyTorchTrial, PyTorchTrialContext, TorchData
+from determined.pytorch import (
+    DataLoader,
+    PyTorchCallback,
+    PyTorchTrial,
+    PyTorchTrialContext,
+    TorchData,
+)
 
+from rx_connect.core.callbacks.progress import TQDMProgressBar
 from rx_connect.core.utils.download_utils import download_and_extract_archive
 from rx_connect.core.utils.func_utils import to_tuple
 from rx_connect.segmentation.semantic.augments import SegmentTransform
@@ -28,6 +35,12 @@ class SegTrial(PyTorchTrial):
         self.optimizer = self.context.wrap_optimizer(self.configure_optimizers())
 
         self.criterion = smp.losses.DiceLoss(mode="binary", from_logits=True)
+
+        # Instantiate TQDMProgressBar callback
+        self.progress_bar_callback = TQDMProgressBar(trial=self, refresh_rate=1)
+
+    def build_callbacks(self) -> Dict[str, PyTorchCallback]:
+        return {"progress": self.progress_bar_callback}
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure optimizer and learning rate scheduler."""
@@ -65,7 +78,6 @@ class SegTrial(PyTorchTrial):
             image_size=self.image_size,
             **self.data_config.get("tfm_kwargs", {}),
         )
-
         return SegDataset(
             root_dir=dataset_dir,
             data_split=split,
@@ -102,10 +114,10 @@ class SegTrial(PyTorchTrial):
         logits_mask = self.model(images)
 
         loss = self.criterion(logits_mask, masks)
-        print(f"epoch: {epoch_idx}, batch: {batch_idx}, loss: {loss}")
 
         self.context.backward(loss)
         self.context.step_optimizer(self.optimizer)
+        self.progress_bar_callback.train_update(batch_idx)
 
         return {"loss": loss}
 
@@ -116,6 +128,6 @@ class SegTrial(PyTorchTrial):
         logits_mask = self.model(images)
 
         val_loss = self.criterion(logits_mask, masks)
-        print(f"batch: {batch_idx}, loss: {val_loss}")
+        self.progress_bar_callback.val_update(batch_idx)
 
         return {"val_loss": val_loss}

@@ -1,7 +1,11 @@
 ---
 name: semantic_seg_const
-description: Segmentation Experiment with batch size 64
+description: Test TQDM Progress Bar
 max_restarts: 0
+records_per_epoch: 20000
+min_validation_period:
+    epochs: 1
+
 
 checkpoint_storage:
     host_path: /mnt/share/RxConnect/checkpoints
@@ -21,7 +25,7 @@ data:
 
 hyperparameters:
     encoder: resnet18
-    global_batch_size: 64
+    global_batch_size: 16
     initial_lr: 0.001
     lr_patience: 2
     lr_factor: 0.1
@@ -39,12 +43,12 @@ searcher:
     metric: val_loss
     smaller_is_better: true
     max_length:
-        epochs: 1
+        epochs: 100
 
 debug: false
 entrypoint: rx_connect.segmentation.semantic.model_def:SegTrial
-workspace: workspace1
+workspace: workspace2
 project: Semantic_Segmentation
 resources:
-    resource_pool: workspace1
+    resource_pool: workspace2
     slots_per_trial: 1

@@ -45,6 +45,7 @@ MANIFEST
 
 # Logs
 **/lightning_logs/**
+**/runs/**
 
 # Dataset
 data/
