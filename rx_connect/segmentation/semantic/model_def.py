@@ -11,7 +11,7 @@ from determined.pytorch import (
     TorchData,
 )
 
-from rx_connect.core.callbacks.progress import TQDMProgressBar
+from rx_connect.core.callbacks import EarlyStopping, TQDMProgressBar
 from rx_connect.core.utils.download_utils import download_and_extract_archive
 from rx_connect.core.utils.func_utils import to_tuple
 from rx_connect.segmentation.semantic.augments import SegmentTransform
@@ -31,16 +31,18 @@ class SegTrial(PyTorchTrial):
         self.model = self.context.wrap_model(
             smp.DeepLabV3Plus(encoder_name=self.hparams["encoder"], encoder_weights="imagenet", classes=1)
         )
-
         self.optimizer = self.context.wrap_optimizer(self.configure_optimizers())
 
         self.criterion = smp.losses.DiceLoss(mode="binary", from_logits=True)
 
-        # Instantiate TQDMProgressBar callback
-        self.progress_bar_callback = TQDMProgressBar(trial=self, refresh_rate=1)
+        # Instantiate all the callbacks
+        self.progress_bar_callback = TQDMProgressBar(trial=self, refresh_rate=5)
+        self.early_stopping_callback = EarlyStopping(
+            context=self.context, monitor=self.hparams["monitor"], patience=self.hparams["patience"]
+        )
 
     def build_callbacks(self) -> Dict[str, PyTorchCallback]:
-        return {"progress": self.progress_bar_callback}
+        return {"progress": self.progress_bar_callback, "early_stopping": self.early_stopping_callback}
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure optimizer and learning rate scheduler."""
