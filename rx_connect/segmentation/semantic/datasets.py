@@ -7,7 +7,7 @@ from skimage.io import imread
 from torch.utils.data import Dataset
 
 from rx_connect.core.augments import BasicAugTransform
-from rx_connect.core.images.io import img_to_tensor
+from rx_connect.core.images.types import img_to_tensor
 from rx_connect.core.utils.io_utils import get_matching_files_in_dir
 
 

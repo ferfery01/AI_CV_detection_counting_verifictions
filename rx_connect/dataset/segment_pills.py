@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Union
 
 import click
-import torch
 import torchvision.transforms.functional as TF
 from joblib import Parallel, delayed
 from torchvision.ops import masks_to_boxes
@@ -15,6 +14,7 @@ from rx_connect.core.images.geometry import expand_bounding_box, extract_ROI
 from rx_connect.core.images.io import load_image
 from rx_connect.core.images.masks import fill_largest_contour, generate_grayscale_mask
 from rx_connect.core.images.transforms import resize_and_center
+from rx_connect.core.images.types import img_to_tensor
 from rx_connect.core.utils.str_utils import str_to_hash
 from rx_connect.dataset.utils import load_consumer_image_df_by_layout
 from rx_connect.tools.logging import setup_logger
@@ -28,7 +28,15 @@ size. The cropped image and mask will be saved to the output directory.
 """
 
 
-def segment_pills(image_path, image_dir, mask_dir, height, width, expand_pixels, bottom_crop_pixels) -> None:
+def segment_pills(
+    image_path: Path,
+    image_dir: Path,
+    mask_dir: Path,
+    target_height: int,
+    target_width: int,
+    expand_pixels: int,
+    bottom_crop_pixels: int,
+) -> None:
     """Segments the pills in the image and saves the cropped image and mask to the output directory."""
     image = load_image(image_path)
     height, width = image.shape[:2]
@@ -43,8 +51,7 @@ def segment_pills(image_path, image_dir, mask_dir, height, width, expand_pixels,
     mask = fill_largest_contour(mask, fill_value=1)
 
     # Convert images and masks to tensors
-    image_t = torch.tensor(image).permute(2, 0, 1)
-    mask_t = torch.tensor(mask).unsqueeze(0)
+    image_t, mask_t = img_to_tensor(image), img_to_tensor(mask)
 
     # Get the bounding box for the mask
     bbox = masks_to_boxes(mask_t).squeeze(0)
@@ -57,8 +64,10 @@ def segment_pills(image_path, image_dir, mask_dir, height, width, expand_pixels,
     mask_patch = extract_ROI(mask_t, bbox)
 
     # Resize the image and mask to a specific size
-    image_patch = resize_and_center(image_patch, height, width)
-    mask_patch = resize_and_center(mask_patch, height, width, interpolation=TF.InterpolationMode.NEAREST)
+    image_patch = resize_and_center(image_patch, target_height, target_width)
+    mask_patch = resize_and_center(
+        mask_patch, target_height, target_width, interpolation=TF.InterpolationMode.NEAREST
+    )
 
     # Save the image and mask to the output directory
     hash_str = str_to_hash(image_path.name)
@@ -74,7 +83,7 @@ def segment_pills(image_path, image_dir, mask_dir, height, width, expand_pixels,
     "--data-dir",
     default="./data/Pill_Images",
     type=click.Path(exists=True),
-    help="Path to the directory containing the consumer grade images and the associated csv file.",
+    help="Path to the directory containing the MC_C3PI_REFERENCE_SEG images.",
 )
 @click.option(
     "-o",
@@ -116,7 +125,6 @@ def main(
 ) -> None:
     layout = "MC_C3PI_REFERENCE_SEG_V1.6"
     data_dir, output_dir = Path(data_dir), Path(output_dir)
-    original_images_dir = data_dir / "images" / layout
 
     # Create image and mask directories
     image_dir, mask_dir = output_dir / "images", output_dir / "masks"
@@ -128,10 +136,9 @@ def main(
 
     # Filter out images that have already been segmented or don't exist
     images_to_segment = [
-        original_images_dir / image_name
+        data_dir / image_name
         for image_name in df.FileName.unique()
-        if (original_images_dir / image_name).exists()
-        and not (mask_dir / f"{str_to_hash(image_name)}.png").exists()
+        if (data_dir / image_name).exists() and not (mask_dir / f"{str_to_hash(image_name)}.png").exists()
     ]
     logger.info(f"Found {len(images_to_segment)} images to segment.")
 
@@ -139,8 +146,8 @@ def main(
     kwargs = {
         "image_dir": image_dir,
         "mask_dir": mask_dir,
-        "height": height,
-        "width": width,
+        "target_height": height,
+        "target_width": width,
         "expand_pixels": expand_pixels,
         "bottom_crop_pixels": bottom_crop_pixels,
     }
