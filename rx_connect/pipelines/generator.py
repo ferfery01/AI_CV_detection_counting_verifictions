@@ -6,7 +6,11 @@ import numpy as np
 
 from rx_connect import SHARED_RXIMAGE_DATA_DIR
 from rx_connect.core.types.generator import PillMaskPaths
-from rx_connect.generator.composition import ImageComposition, generate_image
+from rx_connect.generator.composition import (
+    ImageComposition,
+    densify_groundtruth,
+    generate_image,
+)
 from rx_connect.generator.io_utils import (
     get_background_image,
     load_pill_mask_paths,
@@ -122,7 +126,11 @@ class RxImageGenerator:
     @property
     def reference_pills(self) -> List[np.ndarray]:
         """Return the reference pill images."""
-        return self._pill_images
+        densified_references = []
+        for i, pill_image in enumerate(self._pill_images):
+            xmin, xmax, ymin, ymax = densify_groundtruth(self._pill_masks[i])
+            densified_references.append(pill_image[xmin:xmax, ymin:ymax])
+        return densified_references
 
     def config_background(
         self,
@@ -160,7 +168,8 @@ class RxImageGenerator:
                 images and masks are used.
 
         Returns:
-            ImageComposition: The generated image, mask, and labels.
+            ImageComposition: The generated result, including
+            (image, mask, labels, groundtruth bounding boxes, number of pills per type).
         """
         if new_bg:
             self.config_background(self.bg_dir)
@@ -168,7 +177,7 @@ class RxImageGenerator:
         if new_pill:
             self.config_pills()
 
-        img_comp, mask_comp, labels_comp = generate_image(
+        img_comp, mask_comp, labels_comp, gt_bbox, pills_per_type = generate_image(
             self._bg_image,
             self._pill_images,
             self._pill_masks,
@@ -184,7 +193,7 @@ class RxImageGenerator:
         # Apply color and/or noise augmentations
         img_comp = apply_augmentations(img_comp, apply_color=self.apply_color, apply_noise=self.apply_noise)
 
-        return ImageComposition(img_comp, mask_comp, labels_comp)
+        return ImageComposition(img_comp, mask_comp, labels_comp, gt_bbox, pills_per_type)
 
     @timer()
     def generate(self, new_bg: bool = True, new_pill: bool = True) -> ImageComposition:

@@ -1,5 +1,5 @@
 import random
-from typing import List, NamedTuple, Sequence, Tuple, Union
+from typing import List, NamedTuple, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -29,6 +29,10 @@ class ImageComposition(NamedTuple):
     labels: List[int]
     """List of label IDs of the composed pills.
     """
+    gt_bbox: List[Tuple[int, int, int, int]] = []
+    """Ground Truth Bounding Boxes. (xmin, xmax, ymin, ymax)"""
+    pills_per_type: List[int] = []
+    """Ground Truth pills per type."""
 
 
 def random_partition(number: int, num_parts: int) -> List[int]:
@@ -86,6 +90,47 @@ def sample_pill_location(pill_size: Tuple[int, int], bg_size: Tuple[int, int]) -
     return top_left
 
 
+def densify_groundtruth(
+    multilabel_mask: np.ndarray,
+    focus_area: Optional[Tuple[int, int, int, int]] = None,  # xmin, xmax, ymin, ymax (exclusive max)
+    target_label: int = 1,
+) -> Tuple[int, int, int, int]:
+    """
+    Make compact representation of the ground truth bounding boxes.
+
+    Args:
+        multilabel_mask (np.ndarray): The multilabel mask.
+        focus_area (Optional[Tuple[int, int, int, int]], optional):
+            The focus area to skip full scan. Defaults to None for a full scan.
+            The format is (xmin, xmax, ymin, ymax).
+        target_label (int, optional): The target label. Defaults to 1, assuming mask in binary representation.
+
+    Returns:
+        Tuple[int, int, int, int]:
+            The compact representation of the ground truth bounding boxes.
+            The format is (xmin, xmax, ymin, ymax).
+    """
+    xmin, xmax = 0, multilabel_mask.shape[0]
+    ymin, ymax = 0, multilabel_mask.shape[1]
+    if focus_area is not None:
+        xmin, xmax, ymin, ymax = focus_area
+        xmin = max(0, xmin)
+        xmax = min(xmax, multilabel_mask.shape[0])
+        ymin = max(0, ymin)
+        ymax = min(ymax, multilabel_mask.shape[1])
+
+    while xmin < xmax - 1 and np.max(multilabel_mask[xmin, ymin:ymax]) < target_label:
+        xmin += 1
+    while xmax - 1 > xmin and np.max(multilabel_mask[xmax - 1, ymin:ymax]) < target_label:
+        xmax -= 1
+    while ymin < ymax - 1 and np.max(multilabel_mask[xmin:xmax, ymin]) < target_label:
+        ymin += 1
+    while ymax - 1 > ymin and np.max(multilabel_mask[xmin:xmax, ymax - 1]) < target_label:
+        ymax -= 1
+
+    return (xmin, xmax, ymin, ymax)
+
+
 def _compose_pill_on_bg(
     bg_image: np.ndarray,
     comp_mask: np.ndarray,
@@ -95,7 +140,7 @@ def _compose_pill_on_bg(
     scale: float,
     max_overlap: float,
     max_attempts: int,
-    start_index: int = 1,
+    start_index: int = 0,
     enable_defective_pills: bool = False,
     enable_edge_pills: bool = False,
 ) -> ImageComposition:
@@ -120,6 +165,7 @@ def _compose_pill_on_bg(
     h_bg, w_bg = bg_image.shape[:2]
     count: int = 1
     label_ids: List[int] = []
+    gt_bbox: List[Tuple[int, int, int, int]] = []
 
     # Rescale the pill image and mask to a certain size.
     pill_image, pill_mask = rescale_pill_and_mask(pill_image, pill_mask, scale=scale)
@@ -146,10 +192,22 @@ def _compose_pill_on_bg(
                 bg_image, comp_mask, pill_img_t, pill_mask_t, top_left, start_index + count
             )
             label_ids.append(start_index + count)
+            gt_bbox.append(
+                densify_groundtruth(
+                    multilabel_mask=comp_mask,
+                    focus_area=(
+                        top_left[1],
+                        top_left[1] + w_pill,
+                        top_left[0],
+                        top_left[0] + h_pill,
+                    ),
+                    target_label=start_index + count,
+                )
+            )
             count += 1
             break
 
-    return ImageComposition(bg_image, comp_mask, label_ids)
+    return ImageComposition(bg_image, comp_mask, label_ids, gt_bbox)
 
 
 def generate_image(
@@ -202,10 +260,11 @@ def generate_image(
     scale_factor = random.uniform(*to_tuple(scale))
 
     label_ids: List[int] = []
+    gt_bbox: List[Tuple[int, int, int, int]] = []
 
     for idx, n_pills in enumerate(pills_per_type):
         # Compose the pill on the background image.
-        bg_image, comp_mask, labels = _compose_pill_on_bg(
+        bg_image, comp_mask, labels, bboxes, _ = _compose_pill_on_bg(
             bg_image,
             comp_mask,
             pill_image=pill_images[idx],
@@ -219,5 +278,6 @@ def generate_image(
             start_index=len(label_ids),
         )
         label_ids += labels
+        gt_bbox += bboxes
 
-    return ImageComposition(bg_image, comp_mask, label_ids)
+    return ImageComposition(bg_image, comp_mask, label_ids, gt_bbox, pills_per_type)

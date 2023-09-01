@@ -62,6 +62,9 @@ class RxVisionBase:
 
         Args:
             image (Union[np.ndarray, torch.Tensor, Image]): Image as image object.
+
+        Note:
+            If the image is str/Path that leads to a '.png' file, there might be a 4th channel that will be ignored.
         """
         if isinstance(image, np.ndarray):
             return image
@@ -71,7 +74,7 @@ class RxVisionBase:
             return np.array(image)
         elif isinstance(image, (str, Path)):
             image_path = fetch_from_remote(image)
-            return io.imread(image_path)
+            return io.imread(image_path)[:, :, :3]
         else:
             raise TypeError(f"Image type {type(image)} not supported.")
 
@@ -83,7 +86,7 @@ class RxVisionBase:
             kwargs: Keyword arguments to be passed to the generator object.
         """
         self._reset()
-        self._image, *_ = generator_obj.generate(**kwargs)
+        self._image, _, _, self._gt_bbox, _ = generator_obj.generate(**kwargs)
         self.load_ref_image(generator_obj.reference_pills[0])
 
     def visualize(self) -> None:
@@ -111,6 +114,16 @@ class RxVisionBase:
         """
         assert self._image is not None, "Image not loaded."
         return self._image
+
+    @property
+    def gt_ROIs(self) -> List[np.ndarray]:
+        """Return the cropped image views as the regions of interest (ROIs).
+
+        Returns:
+            List[np.ndarray]: List of cropped image views.
+        """
+        assert hasattr(self, "_gt_bbox"), "Groundtruth bounding box information is not available."
+        return [self.image[xmin:xmax, ymin:ymax] for (xmin, xmax, ymin, ymax) in self._gt_bbox]
 
 
 class RxVisionDetect(RxVisionBase):

@@ -12,11 +12,15 @@ from vlad import VLAD
 
 from rx_connect import CACHE_DIR, SHARED_REMOTE_CKPT_DIR
 from rx_connect.core.utils.cv_utils import equalize_histogram
+from rx_connect.generator.continuous_learning_dataloader import UNIFIED_TRANSFORM
 from rx_connect.tools.data_tools import fetch_from_remote
+from rx_connect.tools.device import get_best_available_device
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import read_pickle
 from rx_connect.tools.timers import timer
 from rx_connect.verification.classification.model import EmbeddingModel
+from rx_connect.verification.embedding.base import ResNetEmbeddingModel
+from rx_connect.verification.embedding.lightning_model import EmbeddingLightningModel
 
 logger = setup_logger()
 
@@ -321,18 +325,7 @@ class RxVectorizerML(RxVectorizer):
         )
 
         # Define the pre-processing transforms
-        self._transforms = A.Compose(
-            [
-                # Resize the longest side to 224, maintaining the aspect ratio
-                A.LongestMaxSize(224, always_apply=True),
-                # Pad the image on the sides to make it square
-                A.PadIfNeeded(min_height=224, min_width=224, always_apply=True, border_mode=0),
-                # Normalize the image
-                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                # Convert to PyTorch tensor
-                ToTensorV2(),
-            ]
-        )
+        self._transforms = UNIFIED_TRANSFORM
 
     def _load_model(self) -> None:
         """Loads the embedding model on the given device and sets it to eval mode."""
@@ -358,3 +351,65 @@ class RxVectorizerML(RxVectorizer):
         # Add batch dimension and move to device
         image_tensor = image_tensor.unsqueeze(0).to(self._device)
         return self._model(image_tensor).cpu().detach().numpy().flatten()
+
+
+class RxVectorizerCEL(RxVectorizer):
+    """RxVectorizerML is a wrapper class using the EmbeddingModel for inference. It loads the model from
+    the given path and generates the embedding vector for the given image. The embedding vector is
+    normalized to unit length.
+    """
+
+    def __init__(
+        self,
+        model_path: Union[
+            str, Path
+        ] = f"{SHARED_REMOTE_CKPT_DIR}/verification/resnet_50_CEL_minmax_finetune.ckpt",
+        device: Union[str, torch.device] = get_best_available_device(),
+        require_masked_input: bool = True,
+        similarity_fn: Callable[..., np.ndarray] = custom_similarity_fn_CS_ReLU,
+    ) -> None:
+        super().__init__(
+            model_path=model_path,
+            device=device,
+            require_masked_input=require_masked_input,
+            similarity_fn=similarity_fn,
+        )
+
+        # Define the pre-processing transforms
+        self._transforms = A.Compose(
+            [
+                # Resize the longest side to 224, maintaining the aspect ratio
+                A.LongestMaxSize(224, always_apply=True),
+                # Pad the image on the sides to make it square
+                A.PadIfNeeded(min_height=224, min_width=224, always_apply=True, border_mode=0),
+                # Normalize the image
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                # Convert to PyTorch tensor
+                ToTensorV2(),
+            ]
+        )
+
+    def _load_model(self) -> None:
+        """Loads the embedding model on the given device and sets it to eval mode."""
+        self._model = (
+            EmbeddingLightningModel.load_from_checkpoint(
+                checkpoint_path=self._model_path, model=ResNetEmbeddingModel("resnet50")
+            )
+            .to_torchscript()
+            .to(self._device)  # type: ignore
+        )
+        logger.info(f"Loaded Embedding model from {self._model_path} on device {self._device}.")
+
+    def _preprocess(self, image: np.ndarray) -> torch.Tensor:
+        """Preprocesses the image for inference. This includes resizing, padding, normalization
+        and conversion to PyTorch tensor.
+        """
+        padded_image_tensor = self._transforms(image=image)["image"].unsqueeze(0).float().to(self._device)
+        return padded_image_tensor
+
+    def _predict(self, image_tensor: torch.Tensor) -> np.ndarray:
+        """Generate the embedding vector for the given image and return it as a flatten
+        numpy array.
+        """
+        prediction = self._model(image_tensor).cpu().detach().numpy().flatten()  # type: ignore
+        return prediction

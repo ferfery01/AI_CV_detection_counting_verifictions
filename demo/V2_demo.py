@@ -10,7 +10,7 @@ from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.pipelines.image import RxVision
 from rx_connect.pipelines.segment import RxSegmentation
-from rx_connect.pipelines.vectorizer import RxVectorizerML
+from rx_connect.pipelines.vectorizer import RxVectorizerCEL
 from rx_connect.tools.timers import timer
 
 logger = logging.Logger("Demo_logger")
@@ -38,7 +38,7 @@ def demo_init() -> None:
         global GENERATOR_OBJ
 
         logger.info("\tPreparing image generation tool...")
-        GENERATOR_OBJ = RxImageGenerator(num_pills_type=2)
+        GENERATOR_OBJ = RxImageGenerator(num_pills_type=2, max_overlap=0.05)
 
         logger.info("\tPreparing pill detection tool...")
         counterObj = RxDetection()
@@ -47,7 +47,7 @@ def demo_init() -> None:
         segmentObj = RxSegmentation()
 
         logger.info("\tPreparing vectorization tool...")
-        vectorizerObj = RxVectorizerML()
+        vectorizerObj = RxVectorizerCEL()
 
         logger.info("\tPreparing image pipeline...")
         IMAGE_OBJ.set_counter(counterObj)
