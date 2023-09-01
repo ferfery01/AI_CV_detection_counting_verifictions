@@ -4,7 +4,7 @@ description: Segmentation Experiment
 labels:
     - Semantic_Segmentation
 max_restarts: 0
-records_per_epoch: 20000
+records_per_epoch: 20
 scheduling_unit: 500
 min_validation_period:
     epochs: 1
@@ -28,19 +28,30 @@ data:
 hyperparameters:
     encoder: resnet18
     global_batch_size: 4
-    monitor: val_loss
-    patience: 0
+    patience: 1
     initial_lr: 0.001
-    lr_patience: 2
-    lr_factor: 0.1
+    lr_T_max: 2
+    lr_eta_min: 0
+    lr_last_epoch: -1
     optimizer: AdamW
     weight_decay: 0.0001
+    gradient_clip_val: 0.1
+
+    # Loss Coefficients
+    loss:
+        lovasz_loss:
+            coef: 0.1
+            per_image: true
+        focal_loss:
+            coef: 0.9
+            alpha: 0.5
+            gamma: 2
 
 searcher:
     name: single
-    metric: val_loss
+    metric: dataset_iou
+    smaller_is_better: false
     max_length:
         epochs: 100
-    smaller_is_better: true
 
 entrypoint: rx_connect.segmentation.semantic.model_def:SegTrial

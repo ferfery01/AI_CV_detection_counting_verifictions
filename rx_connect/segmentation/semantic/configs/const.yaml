@@ -1,11 +1,11 @@
 ---
 name: semantic_seg_const
-description: Test Early Stopping callback with patience 1
+description: Test distributed training
 labels:
     - Semantic_Segmentation
 max_restarts: 0
 records_per_epoch: 20000
-scheduling_unit: 500
+scheduling_unit: 300
 min_validation_period:
     epochs: 1
 
@@ -20,21 +20,32 @@ data:
     download_dir: /mnt/share/RxConnect
     force_download: false
     filename: RxImage_Segment.zip
-    num_workers: 12
+    num_workers: 4
     image_size:
         - 416
         - 720
 
 hyperparameters:
     encoder: resnet18
-    global_batch_size: 64
-    monitor: val_loss
-    patience: 1
+    global_batch_size: 128
+    patience: 5
     initial_lr: 0.001
-    lr_patience: 2
-    lr_factor: 0.1
+    lr_T_max: 2
+    lr_eta_min: 0
+    lr_last_epoch: -1
     optimizer: AdamW
     weight_decay: 0.0001
+    gradient_clip_val: 1.0
+
+    # Loss Coefficients
+    loss:
+        lovasz_loss:
+            coef: 0.1
+            per_image: true
+        focal_loss:
+            coef: 0.9
+            alpha: 0.5
+            gamma: 2
 
 profiling:
     begin_on_batch: 0
@@ -44,8 +55,8 @@ profiling:
 
 searcher:
     name: single
-    metric: val_loss
-    smaller_is_better: true
+    metric: dataset_iou
+    smaller_is_better: false
     max_length:
         epochs: 100
 

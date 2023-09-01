@@ -10,7 +10,6 @@ gradio==3.37.0
 joblib==1.2.0
 lightning==2.0.6
 matplotlib==3.7.1
-omegaconf==2.3.0
 openpyxl==3.1.2
 segment-anything @ git+https://github.com/facebookresearch/segment-anything.git
 super_gradients==3.1.3
