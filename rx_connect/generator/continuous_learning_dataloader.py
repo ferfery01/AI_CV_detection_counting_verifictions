@@ -1,6 +1,7 @@
 from typing import List, cast
 
 import albumentations as A
+import cv2
 import numpy as np
 import torch
 from albumentations.pytorch.transforms import ToTensorV2
@@ -32,12 +33,16 @@ class ContinuousLearningDataset(Dataset):
     - new_sample_rate (float): Rate at which to generate new samples.
         '0.0' means it will only generate new samples when the first time it is called.
         '1.0' means it will always generate new samples.
+    - generate_masked_queries (bool): Whether to generate masked queries.
     """
 
-    def __init__(self, num_samples: int = 1000, new_sample_rate: float = 0.0):
+    def __init__(
+        self, num_samples: int = 1000, new_sample_rate: float = 0.0, generate_masked_queries: bool = False
+    ):
         self.generator = RxImageGenerator(num_pills_type=2, num_pills=(20, 20), apply_noise=False)
         self.new_sample_rate = new_sample_rate
         self.samples: List[dict | None] = [None] * num_samples
+        self.generate_masked_queries = generate_masked_queries
         self.last_idx = -1
 
         # Define the pre-processing transforms
@@ -51,14 +56,30 @@ class ContinuousLearningDataset(Dataset):
         Generate the new sample if needed, and returns the batch created from the sample at 'idx'.
         """
         if self.samples[idx] is None or np.random.rand() < self.new_sample_rate:
-            image, _, _, gt_bbox, gt_counts = self.generator()
+            image, mask, labels, gt_bbox, gt_counts = self.generator()
 
             query_img_list = [image[xmin:xmax, ymin:ymax] for (xmin, xmax, ymin, ymax) in gt_bbox]
             ref_img_list = self.generator.reference_pills
 
             query_tensor = self._pad_into_tensor(query_img_list)
             ref_tensor = self._pad_into_tensor(ref_img_list)
-            self.samples[idx] = {"queries": query_tensor, "reference": ref_tensor, "ref_counts": gt_counts}
+            masked_queries_tensor = None
+            if self.generate_masked_queries:
+                mask_list = [
+                    mask[xmin:xmax, ymin:ymax] == label
+                    for (xmin, xmax, ymin, ymax), label in zip(gt_bbox, labels)
+                ]
+                masked_queries_list = [
+                    cv2.bitwise_or(ROI, ROI, mask=mask.astype(np.uint8))
+                    for ROI, mask in zip(query_img_list, mask_list)
+                ]
+                masked_queries_tensor = self._pad_into_tensor(masked_queries_list)
+            self.samples[idx] = {
+                "queries": query_tensor,
+                "reference": ref_tensor,
+                "ref_counts": gt_counts,
+                "masked_queries": masked_queries_tensor,
+            }
         return cast(dict, self.samples[idx])
 
     def _pad_into_tensor(self, images: List[np.ndarray]) -> torch.Tensor:
