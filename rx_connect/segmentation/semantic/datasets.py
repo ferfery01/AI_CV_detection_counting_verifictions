@@ -6,9 +6,9 @@ import torch
 from skimage.io import imread
 from torch.utils.data import Dataset
 
-from rx_connect.core.augments import BasicAugTransform
 from rx_connect.core.images.types import img_to_tensor
 from rx_connect.core.utils.io_utils import get_matching_files_in_dir
+from rx_connect.segmentation.semantic.augments import SegmentTransform
 
 
 class DatasetSplit(Enum):
@@ -78,7 +78,7 @@ class SegDataset(Dataset):
         root_dir: Union[str, Path],
         data_split: DatasetSplit,
         image_size: Tuple[int, int],
-        transforms: Optional[BasicAugTransform] = None,
+        transforms: Optional[SegmentTransform] = None,
     ) -> None:
         self.root_dir = Path(root_dir)
         self.data_split = data_split
@@ -117,8 +117,8 @@ class SegDataset(Dataset):
             image_tensor, mask_tensor = img_to_tensor(image), img_to_tensor(mask)
 
         return {
-            "image": image_tensor,  # (B, 3, H, W)
-            "mask": mask_tensor,  # (B, 1, H, W)
+            "image": image_tensor,  # (3, H, W)
+            "mask": mask_tensor,  # (1, H, W)
         }
 
     def __repr__(self) -> str:

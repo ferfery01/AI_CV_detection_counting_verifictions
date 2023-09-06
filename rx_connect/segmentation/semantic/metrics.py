@@ -21,7 +21,7 @@ class SegmentMetricReducer(MetricReducer):
         # For now we just compute true positive, false positive, false negative and
         # true negative 'pixels' for each image and class.
         # these values will be aggregated in the end of an epoch.
-        tp, fp, fn, tn = smp.metrics.get_stats(pred_mask.long(), gt_mask.long(), mode="binary")
+        tp, fp, fn, tn = smp.metrics.get_stats(pred_mask.long(), gt_mask.long(), mode="binary", threshold=0.5)
 
         # Save step outputs
         self.results["tp"].append(tp)
@@ -33,10 +33,8 @@ class SegmentMetricReducer(MetricReducer):
         """Reduce the metrics across each slot to some intermediate value. The return value of
         this method from each slot is the passed to cross_slot_reduce().
 
-        NOTE: All the tensor are moved to CPU before returning, otherwise the tensors will be
-        on different cuda devices during the distributed training and the cross_slot_reduce() will
-        fail.
-        """
+        NOTE: All the tensor are moved to CPU before returning, otherwise the tensors will be on different
+        cuda devices during the distributed training and the cross_slot_reduce() will fail."""
         metrics: Dict[str, torch.Tensor] = {}
         metrics["tp"] = torch.cat(self.results["tp"]).cpu()
         metrics["fp"] = torch.cat(self.results["fp"]).cpu()
@@ -68,10 +66,9 @@ class SegmentMetricReducer(MetricReducer):
         # `dataset_iou`.
         metrics_dict["dataset_iou"] = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
 
-        # Compute Dice score
+        # Compute Dice score, sensitivity and specificity
         metrics_dict["dice_coef"] = smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
-
-        # Compute accuracy
-        metrics_dict["accuracy"] = smp.metrics.accuracy(tp, fp, fn, tn, reduction="micro")
+        metrics_dict["sensitivity"] = smp.metrics.sensitivity(tp, fp, fn, tn, reduction="micro")
+        metrics_dict["specificity"] = smp.metrics.specificity(tp, fp, fn, tn, reduction="micro")
 
         return metrics_dict

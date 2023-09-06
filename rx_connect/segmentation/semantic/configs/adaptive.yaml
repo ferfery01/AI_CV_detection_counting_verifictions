@@ -1,0 +1,120 @@
+---
+name: semantic_segmentation_adaptive_search
+description: Adaptive Hyperparameter Search
+labels:
+    - Semantic_Segmentation
+    - Adaptive_Search
+max_restarts: 0
+records_per_epoch: 20000
+scheduling_unit: 300
+min_validation_period:
+    epochs: 1
+
+checkpoint_storage:
+    host_path: /mnt/share/RxConnect/checkpoints
+    storage_path: semantic_segmentation
+    type: shared_fs
+
+data:
+    url: https://drive.google.com/file/d/1sVXW1UirpDvzMANyV9M4zaIqaia2X-Mo/view?usp=sharing
+    md5: c931b863f1aec03030831562a2d44547
+    download_dir: /mnt/share/RxConnect
+    force_download: false
+    filename: RxImage_Segment.zip
+    num_workers: 6
+    image_size:
+        - 720
+        - 1280
+
+hyperparameters:
+    encoder: resnet34
+    global_batch_size: 32
+    patience: 5
+    initial_lr:
+        type: categorical
+        vals:
+            - 5e-5
+            - 1e-4
+            - 5e-4
+            - 2e-4
+            - 1e-3
+            - 2e-3
+    lr_config:
+        lr_T_max: 10
+        lr_eta_min:
+            type: log
+            minval: -6
+            maxval: -5
+            base: 10.0
+        lr_last_epoch: -1
+    optimizer_config:
+        optimizer: AdamW
+        weight_decay:
+            type: categorical
+            vals:
+                - 1e-5
+                - 1e-4
+                - 1e-3
+                - 1e-2
+        gradient_clip_val:
+            type: categorical
+            vals:
+                - 0.1
+                - 0.25
+                - 0.5
+                - 0.75
+                - 1.0
+
+    # Loss Coefficients
+    loss:
+        lovasz_loss:
+            coef:
+                type: categorical
+                vals:
+                    - 0.1
+                    - 0.25
+                    - 0.5
+            per_image: false
+        focal_loss:
+            coef:
+                type: categorical
+                vals:
+                    - 0.5
+                    - 1.0
+                    - 1.25
+                    - 1.5
+            alpha:
+                type: categorical
+                vals:
+                    - 0.5
+                    - 0.75
+                    - 1.0
+            gamma:
+                type: categorical
+                vals:
+                    - 2
+                    - 3
+                    - 4
+                    - 5
+
+profiling:
+    begin_on_batch: 0
+    enabled: true
+    end_after_batch:
+    sync_timings: true
+
+searcher:
+    name: adaptive_asha
+    metric: dataset_iou
+    smaller_is_better: false
+    max_trials: 100
+    max_length:
+        epochs: 50
+
+debug: false
+entrypoint: rx_connect.segmentation.semantic.model_def:SegTrial
+workspace: workspace2
+project: Semantic_Segmentation
+resources:
+    resource_pool: workspace2
+    slots_per_trial: 1

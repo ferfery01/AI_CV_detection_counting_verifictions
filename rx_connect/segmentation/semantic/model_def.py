@@ -1,4 +1,5 @@
 from functools import partial
+from math import ceil
 from pathlib import Path
 from typing import Dict, cast
 
@@ -43,19 +44,21 @@ class SegTrial(PyTorchTrial):
         self.download_dir = self.data_cfg.download_dir
         self.image_size = to_tuple(self.data_cfg.image_size)
 
+        # Initialize the model and optimizer
         self.model = self.context.wrap_model(
             smp.DeepLabV3Plus(encoder_name=self.hparams.encoder, encoder_weights="imagenet", classes=1)
         )
         self.optimizer = self.context.wrap_optimizer(self.configure_optimizers())
-        self.clip_grads = partial(clip_grads_fn, max_norm=self.hparams.gradient_clip_val)
+        self.clip_grads = partial(clip_grads_fn, max_norm=self.hparams.optimizer_config.gradient_clip_val)
 
-        # Wrap the LR scheduler.
+        # Wrap the LR scheduler
+        iters_per_epoch = self._calculate_iter_per_epoch()
         self.lr_scheduler = self.context.wrap_lr_scheduler(
             torch.optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer,
-                T_max=self.exp_cfg.searcher.max_length.epochs,
-                eta_min=self.hparams.lr_eta_min,
-                last_epoch=self.hparams.lr_last_epoch,
+                T_max=self.hparams.lr_config.lr_T_max * iters_per_epoch,
+                eta_min=self.hparams.lr_config.lr_eta_min,
+                last_epoch=self.hparams.lr_config.lr_last_epoch,
             ),
             step_mode=LRScheduler.StepMode.STEP_EVERY_EPOCH,
         )
@@ -87,11 +90,19 @@ class SegTrial(PyTorchTrial):
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure optimizer and learning rate scheduler."""
-        optimizer = getattr(torch.optim, self.hparams.optimizer)
+        optimizer = getattr(torch.optim, self.hparams.optimizer_config.optimizer)
 
         return optimizer(
-            self.model.parameters(), lr=self.hparams.initial_lr, weight_decay=self.hparams.weight_decay
+            self.model.parameters(),
+            lr=self.hparams.initial_lr,
+            weight_decay=self.hparams.optimizer_config.weight_decay,
         )
+
+    def _calculate_iter_per_epoch(self) -> int:
+        """Calculate the number of iterations per epoch."""
+        train_data_size = len(self.init_dataset(DatasetSplit.TRAIN))
+        batch_size = self.context.get_global_batch_size()
+        return ceil(train_data_size / batch_size)
 
     def init_dataset(self, split: DatasetSplit) -> SegDataset:
         """Initialize the dataset for semantic segmentation.
