@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union, overload
 
 import albumentations as A
 import numpy as np
@@ -74,6 +74,32 @@ class BasicAugTransform(ABC):
             image_t = np.stack([self(image, **kwargs) for image in images])
             ts.show(image_t)
 
+    @overload
     @abstractmethod
-    def __call__(self, *args: Any, **kwargs: Any) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        pass
+    def __call__(self, image: np.ndarray, mask: None = None, *args: Any, **kwargs: Any) -> torch.Tensor:
+        ...
+
+    @overload
+    @abstractmethod
+    def __call__(
+        self, image: np.ndarray, mask: np.ndarray, *args: Any, **kwargs: Any
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        ...
+
+    @abstractmethod
+    def __call__(
+        self, image: np.ndarray, mask: Optional[np.ndarray] = None, *args: Any, **kwargs: Any
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """Perform the transformation.
+
+        Args:
+            image: The image to be transformed.
+            mask: Optional mask to be transformed.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A tuple of (transformed_image, transformed_mask) if mask is provided,
+            else just the transformed_image.
+        """
+        raise NotImplementedError

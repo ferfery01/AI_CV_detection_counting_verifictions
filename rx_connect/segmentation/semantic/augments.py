@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Any, Optional, Tuple, Union, overload
 
 import albumentations as A
 import numpy as np
@@ -41,9 +41,8 @@ class SegmentTransform(BasicAugTransform):
         """The final resize transform to apply to both images and masks.
         """
 
+        self.final_tfms = self.init_final_transforms(normalize=self.normalize)
         self.transforms = self.finetune_transform()
-        self.image_final_tfms = self.init_final_transforms(normalize=self.normalize)
-        self.mask_final_tfms = self.init_final_transforms(normalize=False)
 
     def init_spatial_transform(self) -> A.Compose:
         """Define the spatial transforms for augmentation."""
@@ -95,16 +94,28 @@ class SegmentTransform(BasicAugTransform):
     def finetune_transform(self) -> A.Compose:
         """Combine all the transforms together."""
         return A.Compose(
-            [self.spatial_tfm, self.color_tfm, self.resize_tfm] if self.train else [self.resize_tfm]
+            [self.spatial_tfm, self.color_tfm, self.resize_tfm, self.final_tfms]
+            if self.train
+            else [self.resize_tfm, self.final_tfms]
         )
 
-    def __call__(self, image: np.ndarray, mask: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Apply spatial and non-spatial transforms to both images and masks
-        augmented = self.transforms(image=image, mask=mask)
-        image, mask = augmented["image"], augmented["mask"]
+    @overload
+    def __call__(self, image: np.ndarray, mask: None = None, *args: Any, **kwargs: Any) -> torch.Tensor:
+        ...
 
-        # Normalize images and convert both images and masks to tensors
-        image_t = self.image_final_tfms(image=image)["image"]
-        mask_t = self.mask_final_tfms(image=mask)["image"]
+    @overload
+    def __call__(
+        self, image: np.ndarray, mask: np.ndarray, *args: Any, **kwargs: Any
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        ...
 
-        return image_t, mask_t
+    def __call__(
+        self, image: np.ndarray, mask: Optional[np.ndarray] = None, *args: Any, **kwargs: Any
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """Apply the transforms to the image and mask."""
+        augmented = (
+            self.transforms(image=image, mask=mask) if mask is not None else self.transforms(image=image)
+        )
+        image_t, mask_t = augmented["image"], augmented.get("mask", None)
+
+        return (image_t, mask_t) if mask_t is not None else image_t

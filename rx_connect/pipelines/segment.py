@@ -1,18 +1,24 @@
 from pathlib import Path
-from typing import Any, List, Union, cast
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import cv2
 import numpy as np
+import segmentation_models_pytorch as smp
+import torch
+import torchvision.transforms.functional as TF
 from huggingface_hub import hf_hub_download
 from segment_anything import SamAutomaticMaskGenerator, build_sam
+from segmentation_models_pytorch.base import SegmentationModel
 from ultralytics import YOLO
 
 from rx_connect import CACHE_DIR, PIPELINES_DIR, SHARED_REMOTE_DIR
+from rx_connect.core.images.types import img_to_tensor
 from rx_connect.core.types.segment import SamHqSegmentResult
+from rx_connect.core.utils.func_utils import to_tuple
 from rx_connect.core.utils.sam_utils import get_best_mask
 from rx_connect.pipelines.base import RxBase
+from rx_connect.segmentation.semantic.augments import SegmentTransform
 from rx_connect.tools.data_tools import fetch_from_remote
-from rx_connect.tools.device import get_best_available_device
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.serialization import load_yaml
 from rx_connect.tools.timers import timer
@@ -27,9 +33,10 @@ class RxSegmentation(RxBase):
 
     def __init__(
         self,
-        cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/segment_YOLO_config.yml",
+        cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/instance/segment_YOLO_config.yml",
+        device: Optional[Union[str, torch.device]] = None,
     ) -> None:
-        super().__init__(cfg)
+        super().__init__(cfg, device)
 
     def _load_cfg(self) -> None:
         """Loads the config file and sets the attributes.
@@ -48,20 +55,19 @@ class RxSegmentation(RxBase):
         1. If SAM_flag is True, then the model is loaded from HuggingFace Hub.
         2. If SAM_flag is False, then the model is loaded from a local path.
         """
-        device = get_best_available_device()
 
         if self._model_type == "SAM":
             ckpt_path = hf_hub_download(repo_id="ybelkada/segment-anything", filename=self._model_ckpt)
             self._model = SamAutomaticMaskGenerator(
-                build_sam(checkpoint=ckpt_path).to(device),
+                build_sam(checkpoint=ckpt_path).to(self._device),
                 stability_score_thresh=self._stability_score_thresh,
             )
-            logger.info(f"Loaded SAM-HQ model from {ckpt_path} on {device}.")
+            logger.info(f"Loaded SAM-HQ model from {ckpt_path} on {self._device}.")
 
         elif self._model_type == "YOLO":
             model_path = fetch_from_remote(self._model_ckpt, cache_dir=CACHE_DIR / "segmentation")
             self._model = YOLO(str(model_path))
-            logger.info(f"Loaded YOLOv8n-seg model from {self._model_ckpt} on {device}.")
+            logger.info(f"Loaded YOLOv8n-seg model from {self._model_ckpt} on {self._device}.")
 
         else:
             raise ValueError(f"{self._model_type} is an unknown model type. Please use SAM or YOLO model.")
@@ -70,10 +76,11 @@ class RxSegmentation(RxBase):
         # YOLO model will modify image
         return image.copy()
 
-    def _predict(self, image: np.ndarray) -> Union[List[SamHqSegmentResult], np.ndarray]:
+    def _predict(self, image: Union[np.ndarray, torch.Tensor]) -> Union[List[SamHqSegmentResult], np.ndarray]:
         """Predicts the segmentation of the image. The output is a list of dictionaries with
         keys: bbox, segmentation, stability_score.
         """
+        image = np.array(image) if isinstance(image, torch.Tensor) else image
         if self._model_type == "SAM":
             pred = cast(SamAutomaticMaskGenerator, self._model).generate(image)
             return cast(List[SamHqSegmentResult], pred)
@@ -169,11 +176,79 @@ class RxSegmentation(RxBase):
 
         """
         assert image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array."
-        image = self._preprocess(image)
-        prediction = self._predict(image)
-        processed_result = self._postprocess(prediction)
+        return self(image)
 
-        return processed_result
+
+class RxSemanticSegmentation(RxBase):
+    def __init__(
+        self,
+        cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/semantic/deeplabv3_plus-resnet50.yaml",
+        device: Union[str, torch.device] = "cpu",
+    ) -> None:
+        super().__init__(cfg, device)
+        self._transform = SegmentTransform(
+            train=False, normalize=True, image_size=(self.conf.image_size[0], self.conf.image_size[1])
+        )
+        self._image_size: Optional[Tuple[int, int]] = None
+
+    @property
+    def image_size(self) -> Tuple[int, int]:
+        if self._image_size is None:
+            raise ValueError("Image size is not set.")
+        return self._image_size
+
+    @image_size.setter
+    def image_size(self, image_size: Tuple[int, int]) -> None:
+        self._image_size = image_size
+
+    def _load_cfg(self) -> None:
+        """Load the configuration file for the semantic segmentation model."""
+        conf = load_yaml(self._cfg)
+        self.conf = conf.semantic_segmentation
+        self._seg_model = self.conf.model
+        self._arch = self.conf.arch
+
+        # Check if the model is available in segmentation_models_pytorch
+        if not hasattr(smp, self._seg_model):
+            raise ValueError(f"Model {self._seg_model} not found in `segmentation_models_pytorch`.")
+
+    def _load_model(self) -> None:
+        """Load the semantic segmentation model from the path specified in the config file."""
+        _model_path = fetch_from_remote(
+            self.conf.model_path, cache_dir=CACHE_DIR / "segmentation" / "semantics" / self._seg_model
+        )
+        if not _model_path.exists():
+            raise FileNotFoundError(f"Model path {_model_path} does not exist.")
+
+        seg_model = cast(SegmentationModel, getattr(smp, self._seg_model))
+        self._model = seg_model(encoder_name=self._arch, encoder_weights=None)
+        model_state_dict = torch.load(_model_path, map_location=self._device)
+        self._model.load_state_dict(model_state_dict)
+        self._model.eval()
+        logger.info(f"Loaded {self._seg_model} model from {_model_path} on {self._device}.")
+
+    def _preprocess(self, image: np.ndarray) -> torch.Tensor:
+        """Preprocess the image for inference."""
+        self.image_size = to_tuple(image.shape[:2])
+        return self._transform(image=image, mask=None).to(self._device)
+
+    @torch.inference_mode()
+    def _predict(self, image: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
+        """Predict the segmentation mask for the input image. The logits are passed through a sigmoid
+        function to get the probability mask. The probability mask is then thresholded at 0.5 to get
+        the final segmentation mask.
+        """
+        image = img_to_tensor(image) if isinstance(image, np.ndarray) else image
+        logits_mask = self._model(image.unsqueeze(0))
+        prob_mask = logits_mask.sigmoid()
+        return (prob_mask > 0.5).float()
+
+    def _postprocess(self, mask: torch.Tensor) -> np.ndarray:
+        """Postprocess the mask to get the final segmentation mask. The mask is resized to the original
+        image size and converted to a numpy array.
+        """
+        mask = TF.resize(mask, size=self.image_size, interpolation=TF.InterpolationMode.NEAREST)
+        return mask.numpy().squeeze()
 
 
 if __name__ == "__main__":
@@ -187,8 +262,8 @@ if __name__ == "__main__":
     )
 
     # tested both SAM and YOLO
-    config_file_SAM = f"{PIPELINES_DIR}/configs/Dev/segment_SAM_config.yml"
-    config_file_YOLO = f"{PIPELINES_DIR}/configs/Dev/segment_YOLO_config.yml"
+    config_file_SAM = f"{PIPELINES_DIR}/configs/Dev/instance/segment_SAM_config.yml"
+    config_file_YOLO = f"{PIPELINES_DIR}/configs/Dev/instance/segment_YOLO_config.yml"
 
     # instantiate count object
     detection_obj = RxDetection()

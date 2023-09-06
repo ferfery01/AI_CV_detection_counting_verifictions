@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import albumentations as A
 import numpy as np
@@ -179,22 +179,28 @@ class RefConsTransform(BasicAugTransform):
         else:
             return self.final_transforms
 
-    def __call__(
-        self,
-        image: np.ndarray,
-        is_ref: bool = True,
-        rot_degree: int = 0,
-    ) -> torch.Tensor:
+    def __call__(self, image: np.ndarray, mask: None = None, *args: Any, **kwargs: Any) -> torch.Tensor:  # type: ignore
         """Apply the transforms to the image.
 
         Args:
-            image: The image to apply the transforms to.
-            is_ref: Whether the image is a reference image or not.
-            rot_degree: The rotation angle in degrees in counter-clockwise direction.
+            image (np.ndarray): The image to which the transforms will be applied.
+            mask (Optional[np.ndarray]): This argument is not used.
+            *args (Any): Additional positional arguments. Currently not utilized.
+            **kwargs (Any): Additional keyword arguments. Accepts the following keys:
+                - is_ref (bool): Specifies whether the image is a reference image. Defaults to True.
+                - rot_degree (int): Specifies the rotation angle in degrees in counter-clockwise direction.
+                    Defaults to 0.
 
         Returns:
-            The transformed image as a torch tensor.
+            torch.Tensor: The transformed image as a torch tensor.
+
+        Note:
+            This method is designed to be compatible with the `BasicAugTransform` class,
+            and it can accept additional keyword arguments for extensibility.
         """
+        is_ref = kwargs.get("is_ref", True)
+        rot_degree = kwargs.get("rot_degree", 0)
+
         # Rotate the image
         image = rotate_image(image, angle=rot_degree)
 

@@ -67,5 +67,5 @@ entrypoint: rx_connect.segmentation.semantic.model_def:SegTrial
 workspace: workspace2
 project: Semantic_Segmentation
 resources:
-    resource_pool: workspace1
+    resource_pool: workspace2
     slots_per_trial: 1

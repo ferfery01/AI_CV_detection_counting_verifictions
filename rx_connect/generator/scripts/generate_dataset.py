@@ -52,7 +52,7 @@ def create_folders(output_path: Path, mode: str) -> Tuple[Path, List[Path]]:
 def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str) -> None:
     """Generate and save a single sample along with its annotation."""
     # Generate the synthetic image along with its annotation
-    img_comp, mask_comp, labels_comp = generator()
+    img_comp, mask_comp, labels_comp, *_ = generator()
     img_comp = cv2.cvtColor(img_comp, cv2.COLOR_RGB2BGR)
 
     # Generate a unique ID for the image

@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Any, Optional, Union
 
-import albumentations as A
 import lightning as L
 import numpy as np
 import pandas as pd
@@ -60,7 +59,7 @@ class SingleImagePillID(Dataset):
         df: pd.DataFrame,
         label_encoder: LabelEncoder,
         train: bool,
-        transforms: A.Compose,
+        transforms: RefConsTransform,
         rotate_aug: Optional[int] = None,
         return_ref: bool = False,
     ) -> None:

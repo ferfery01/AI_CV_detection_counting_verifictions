@@ -1,7 +1,8 @@
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union, cast
 
 import numpy as np
+import torch
 from super_gradients.training import models as yolo_model
 from super_gradients.training.models.predictions import DetectionPrediction
 
@@ -17,8 +18,12 @@ logger = setup_logger()
 
 
 class RxDetection(RxBase):
-    def __init__(self, cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/counter_config.yml") -> None:
-        super().__init__(cfg)
+    def __init__(
+        self,
+        cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/counter_config.yml",
+        device: Optional[Union[str, torch.device]] = None,
+    ) -> None:
+        super().__init__(cfg, device)
 
     def _load_cfg(self) -> None:
         """Loads the config file and sets the attributes."""
@@ -33,40 +38,34 @@ class RxDetection(RxBase):
         """Loads the YOLO-NAS model."""
         # Fetch the model from the remote if it is not already in the cache.
         self._model_path = fetch_from_remote(self._model_path, cache_dir=CACHE_DIR / "counting")
-        assert self._model_path.exists(), f"Model path {self._model_path} does not exist."
+        if not self._model_path.exists():
+            raise FileNotFoundError(f"Model path {self._model_path} does not exist.")
 
         # Load the model.
         self._model = yolo_model.get(
             self._yolo_model, num_classes=self._n_classes, checkpoint_path=str(self._model_path)
-        )
+        ).to(self._device)
         self._model.eval()
 
     def _preprocess(self, image: np.ndarray) -> np.ndarray:
         return image
 
-    def _predict(self, image: np.ndarray) -> DetectionPrediction:
+    def _predict(self, image: Union[np.ndarray, torch.Tensor]) -> DetectionPrediction:
         """Detection network inference function. This function takes an image and returns a list
         of dictionaries with keys: bboxes_xyxy, confidence, class_id, class_name, and class_confidence.
         """
-        model_pred = self._model.predict(image, self._conf)
+        model_pred = self._model.predict(image, conf=self._conf)
         return list(model_pred._images_prediction_lst)[0].prediction
 
     def _postprocess(self, model_pred: DetectionPrediction) -> DetectionPrediction:
         return model_pred
-
-    def __call__(self, image: np.ndarray) -> DetectionPrediction:
-        image = self._preprocess(image)
-        results = self._predict(image)
-        output_results = self._postprocess(results)
-
-        return output_results
 
     @timer()
     def count(self, image: np.ndarray) -> List[CounterModuleOutput]:
         """Counts the number of objects in the image and returns a list of CounterModuleOutput objects."""
         assert image.ndim == 3, f"Image should be a 3D array, but got a {image.ndim}D array."
 
-        pred = self(image)
+        pred = cast(DetectionPrediction, self(image))
         bboxes: List[List[int]] = pred.bboxes_xyxy.astype(int).tolist()
         scores: List[float] = pred.confidence.tolist()
 
