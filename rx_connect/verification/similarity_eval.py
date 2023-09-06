@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import click
 import numpy as np
@@ -9,7 +9,15 @@ import pandas as pd
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.image import RxVision
 from rx_connect.pipelines.segment import RxSegmentation
-from rx_connect.pipelines.vectorizer import RxVectorizerSift
+
+# Call vectorizer object
+from rx_connect.pipelines.vectorizer import (
+    RxVectorizer,
+    RxVectorizerColorhist,
+    RxVectorizerColorMomentHash,
+    RxVectorizerML,
+    RxVectorizerSift,
+)
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
@@ -58,12 +66,19 @@ Returns:
 The final result is the calculated average probability differences.
 
 How to test:
-    # python eval_binary_score.py
+    # python similarity_eval.py
     # --epill_path /Users/ztakbi6y/ai-lab-RxConnect/.cache/images
     # --data_dir /Users/ztakbi6y/ai-lab-RxConnect/rx_connect/generator/scripts/data/synthetic/detection
     # --threshold 0.8
 
 """
+
+VECTORIZER_REGISTRY: Dict[str, RxVectorizer] = {
+    "ColorHist": RxVectorizerColorhist(),
+    "ColorMoment": RxVectorizerColorMomentHash(),
+    "ML": RxVectorizerML(),
+    "Sift": RxVectorizerSift(),
+}
 
 
 def load_pill_images_and_references(
@@ -73,7 +88,6 @@ def load_pill_images_and_references(
     reference_pills_true, image_name = Path(row[1]).name, row[0]
 
     # generate a false reference pill for the pill tray
-
     refname_false = []
     for _ in range(nfalse_ref + 1):
         reference_pills_false = reference_pills_true
@@ -111,12 +125,19 @@ def load_pill_images_and_references(
 @click.option(
     "-n",
     "--nfalse_ref",
-    default=10,
+    default=5,
     show_default=True,
     type=int,
     help="number of false pill references to compare each pill tray image against",
 )
-def main(epill_path: str, data_dir: str, threshold: float, nfalse_ref: int) -> tuple:
+@click.option(
+    "-v",
+    "--vectorizer_model",
+    default="Sift",
+    show_default=True,
+    type=click.Choice(["ColorHist", "ColorMoment", "ML", "Sift"]),
+)
+def main(epill_path: str, data_dir: str, threshold: float, nfalse_ref: int, vectorizer_model: str) -> tuple:
     images_dir = f"{data_dir}/images"
     csv_dir = f"{data_dir}/pill_info.csv"
 
@@ -128,9 +149,7 @@ def main(epill_path: str, data_dir: str, threshold: float, nfalse_ref: int) -> t
 
     # Call segmentation object
     segmentObj = RxSegmentation()
-
-    # Call vectorizer object
-    vectorizerObj = RxVectorizerSift()
+    vectorizerObj = VECTORIZER_REGISTRY[vectorizer_model]
 
     imageObj.set_counter(counterObj)
     imageObj.set_vectorizer(vectorizerObj)
@@ -152,47 +171,58 @@ def main(epill_path: str, data_dir: str, threshold: float, nfalse_ref: int) -> t
         refname_true, refname_false, im_path = load_pill_images_and_references(
             epill_path, epill_ref_list, images_dir, row, nfalse_ref
         )
-        imageObj.load_image(im_path)  # load the image of the pill tray
-        imageObj.load_ref_image(refname_true)  # load true ref_images
-        pos_similarity_scores = imageObj.similarity_scores
 
-        """
-        please note that because we already know that we are comparing
-        the similarity score against the "true pill reference", we know that we do not have
-        any FP or TN. That's why we only count the TP
-        """
-        pos += len(pos_similarity_scores)
-        true_pos += sum(pos_similarity_scores > threshold)
-        n_pos += 1
-
-        assert np.all(pos_similarity_scores <= 1.0), "Some values of similarity scores is out of range."
-
-        # prob_diff_pos is in fact np.mean([1.0 - x for x in pos_similarity_scores])
-        prob_diff_pos = 1.00 - np.mean(pos_similarity_scores)
-        prob_diff_pos_sum += prob_diff_pos
-
-        prob_diff_pos_dict[Path(im_path).name] = (prob_diff_pos, len(pos_similarity_scores))
-
-        # for each pill tray image, we compare it against multiple randomly chosen
-        # false pill references to minimize the bias
-
-        for i in range(nfalse_ref + 1):
+        try:
             imageObj.load_image(im_path)  # load the image of the pill tray
-            imageObj.load_ref_image(refname_false[i])  # load the false ref_images
-            neg_similarity_scores = imageObj.similarity_scores
+            imageObj.load_ref_image(refname_true)  # load true ref_images
+            pos_similarity_scores = imageObj.similarity_scores
+
             """
             please note that because we already know that we are comparing
-            the similarity score against the "false pill reference", we know that we do not have
-            any TP. That's why we only count the FP. We do have TN as well
-            but it's not used in Recall/Precision, so we skipped that as well.
+            the similarity score against the "true pill reference", we know that we do not have
+            any FP or TN. That's why we only count the TP
             """
-            false_pos += sum(neg_similarity_scores > threshold)
-            n_neg += 1
+            pos += len(pos_similarity_scores)
+            true_pos += sum(pos_similarity_scores > threshold)
+            n_pos += 1
 
-            # x in fact is abs(0.0 - x) -> prob_diff_neg = np.mean([x for x in neg_similarity_scores])
-            prob_diff_neg = np.mean(neg_similarity_scores)
-            prob_diff_neg_sum += prob_diff_neg
-            prob_diff_neg_dict[Path(im_path).name] = (prob_diff_neg, len(neg_similarity_scores))
+            assert np.all(pos_similarity_scores <= 1.0), "Some values of similarity scores is out of range."
+
+            # prob_diff_pos is in fact np.mean([1.0 - x for x in pos_similarity_scores])
+            prob_diff_pos = 1.00 - np.mean(pos_similarity_scores)
+            prob_diff_pos_sum += prob_diff_pos
+
+            prob_diff_pos_dict[Path(im_path).name] = (prob_diff_pos, len(pos_similarity_scores))
+
+            # for each pill tray image, we compare it against multiple randomly chosen
+            # false pill references to minimize the bias
+
+            for i in range(nfalse_ref + 1):
+                imageObj.load_image(im_path)  # load the image of the pill tray
+                imageObj.load_ref_image(refname_false[i])  # load the false ref_images
+                neg_similarity_scores = imageObj.similarity_scores
+                """
+                please note that because we already know that we are comparing
+                the similarity score against the "false pill reference", we know that we do not have
+                any TP. That's why we only count the FP. We do have TN as well
+                but it's not used in Recall/Precision, so we skipped that as well.
+                """
+                false_pos += sum(neg_similarity_scores > threshold)
+                n_neg += 1
+
+                # x in fact is abs(0.0 - x) -> prob_diff_neg = np.mean([x for x in neg_similarity_scores])
+                prob_diff_neg = np.mean(neg_similarity_scores)
+                prob_diff_neg_sum += prob_diff_neg
+                prob_diff_neg_dict[Path(im_path).name] = (prob_diff_neg, len(neg_similarity_scores))
+        except Exception:
+            print("error loading image", im_path)
+            print(
+                " check the image printed above. The error is most likely \n"
+                " due to the inability of the model to detect either the \n"
+                " bounding boxes or shape. This happens mostly for very \n"
+                " unique shapes of the pills or when the noise ratio exists \n"
+                " in the background is relatively high"
+            )
 
     Precision = true_pos / (true_pos + false_pos)
     Recall = true_pos / pos
@@ -218,6 +248,7 @@ def main(epill_path: str, data_dir: str, threshold: float, nfalse_ref: int) -> t
         sum_ncount += count_pills
     prob_diff_negative = sum_n / sum_ncount
 
+    print("\n")
     print("binary score results :")
     print(f"Precision = {Precision:.3f}")
     print(f"Recall = {Recall:.3f}")
