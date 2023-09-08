@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm, trange
 
 from rx_connect.core.images.io import IMAGE_EXTENSIONS, download_image
-from rx_connect.dataset.utils import LAYOUTS, load_consumer_image_df_by_layout
+from rx_connect.dataset.utils import Layouts, load_consumer_image_df_by_layout
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
@@ -93,7 +93,7 @@ def extract_image_urls(url: str) -> List[str]:
     "-l",
     "--layout",
     required=True,
-    type=click.Choice(LAYOUTS),
+    type=click.Choice(Layouts.members()),
     help="""Select the Image layout to download. More information about the layout can be
     obtained at https://data.lhncbc.nlm.nih.gov/public/Pills/RxImageImageLayouts.docx""",
 )
@@ -113,7 +113,7 @@ def main(download_dir: str, indices: Tuple[int, int], layout: str, xml_download:
     logger.info(f"Downloading projects {start} to {end} for layout {layout} to {download_dir}")
 
     # Load the consumer grade images csv file and filter it based on the layout
-    df = load_consumer_image_df_by_layout(download_dir, layout)
+    df = load_consumer_image_df_by_layout(download_dir, layout=Layouts[layout])
     filenames = set(df.FileName.unique())
 
     # ===== Download all the XML files =====

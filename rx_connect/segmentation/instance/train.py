@@ -23,7 +23,7 @@ Or, print via: vars(model) to see all the attributes. model here is a YOLO model
 @click.option(
     "-y",
     "--yaml-dir",
-    default=f"{PROJECT_DIR}/segmentation/data.yaml",
+    default=f"{PROJECT_DIR}/segmentation/instance/data.yaml",
     required=True,
     help="""Path to the yaml file for training the model.
     It contains dataset path for train/val, optional test, and class labels.""",

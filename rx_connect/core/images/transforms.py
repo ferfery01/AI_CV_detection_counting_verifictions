@@ -1,9 +1,10 @@
 from typing import Optional, Sequence, Union
 
 import numpy as np
+import skimage as ski
 import torch
 import torchvision.transforms.functional as TF
-from scipy.ndimage import rotate
+from skimage.transform import rotate
 
 
 def pad_image(image: np.ndarray, pad_width: int, pad_value: int = 0) -> np.ndarray:
@@ -115,22 +116,42 @@ def resize_and_center(
     return padded_image
 
 
-def rotate_image(image: np.ndarray, angle: int = 0) -> np.ndarray:
+def rotate_image(image: np.ndarray, angle: int = 0, resize: bool = False) -> np.ndarray:
     """Rotate an image by a certain angle and return the result as an np.uint8 array.
 
     Args:
-        image: The image to rotate. Must be an np.uint8 array.
-        angle: The angle to rotate the image, in degrees. Positive values rotate counter-
+        image (np.ndarray): The image to rotate.
+        angle (int): The angle to rotate the image, in degrees. Positive values rotate counter-
             clockwise, and negative values rotate clockwise.
+        resize (bool): Whether to resize the image so that it fits the rotated image. Defaults to False.
 
     Returns:
         The rotated image as an np.uint8 array.
     """
 
     # Rotate the image
-    rotated_image = rotate(image, angle, reshape=False)
+    rotated_image = rotate(image, angle, resize=resize)
 
-    # Ensuring that all values are within the correct range
-    rotated_image = np.clip(rotated_image, 0, 255)
+    # Convert to uint8
+    return ski.img_as_ubyte(rotated_image)
 
-    return rotated_image.astype(np.uint8)  # Convert to uint8
+
+def fix_image_orientation(image: np.ndarray) -> np.ndarray:
+    """Fix the orientation of the image if its aspect ratio is greater than 1 by rotating it clockwise
+    by 90 degrees.
+
+    Args:
+        image (np.ndarray): The input image to fix the orientation of.
+
+    Returns:
+        np.ndarray: The image with fixed orientation.
+    """
+    # Check aspect ratio
+    height, width = image.shape[:2]
+    aspect_ratio = width / height
+
+    # Rotate the image clockwise by 90 degrees if the aspect ratio is greater than 1
+    if aspect_ratio < 1:
+        image = rotate_image(image, angle=-90, resize=True)
+
+    return image

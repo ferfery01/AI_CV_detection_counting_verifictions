@@ -49,11 +49,11 @@ class RxBase(ABC):
     def _postprocess(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    def __call__(self, image: np.ndarray) -> Any:
+    def __call__(self, image: np.ndarray, **kwargs: Any) -> Any:
         """This method is the main entry point of the RxConnect objects. It takes an image and returns
         the prediction.
         """
         processed_image = self._preprocess(image)
         prediction = self._predict(processed_image)
-        processed_result = self._postprocess(prediction)
+        processed_result = self._postprocess(prediction, **kwargs)
         return processed_result

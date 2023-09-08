@@ -12,6 +12,7 @@ from segmentation_models_pytorch.base import SegmentationModel
 from ultralytics import YOLO
 
 from rx_connect import CACHE_DIR, PIPELINES_DIR, SHARED_REMOTE_DIR
+from rx_connect.core.images.masks import refine_mask
 from rx_connect.core.images.types import img_to_tensor
 from rx_connect.core.types.segment import SamHqSegmentResult
 from rx_connect.core.utils.func_utils import to_tuple
@@ -186,20 +187,37 @@ class RxSemanticSegmentation(RxBase):
         device: Union[str, torch.device] = "cpu",
     ) -> None:
         super().__init__(cfg, device)
-        self._transform = SegmentTransform(
-            train=False, normalize=True, image_size=(self.conf.image_size[0], self.conf.image_size[1])
-        )
         self._image_size: Optional[Tuple[int, int]] = None
+        self._test_image_size: Optional[Tuple[int, int]] = None
+
+    @property
+    def transform(self) -> SegmentTransform:
+        """Returns the transform to use for the semantic segmentation model inference."""
+        return SegmentTransform(train=False, normalize=True, image_size=self.image_size)
 
     @property
     def image_size(self) -> Tuple[int, int]:
+        """Returns the image size to use for the semantic segmentation model inference. If the image size
+        is not set, then the image size from the config file is returned.
+        """
         if self._image_size is None:
-            raise ValueError("Image size is not set.")
+            return (self.conf.image_size[0], self.conf.image_size[1])
         return self._image_size
 
-    @image_size.setter
-    def image_size(self, image_size: Tuple[int, int]) -> None:
-        self._image_size = image_size
+    @property
+    def test_image_size(self) -> Tuple[int, int]:
+        """Returns the image size of the test image. This is used to resize the segmentation mask to the
+        original image size after inference. This is set in the `_preprocess` method.
+        """
+        if self._test_image_size is None:
+            raise TypeError(
+                f"The `{self.__class__.__name__}._test_image_size` reference has not been set yet."
+            )
+        return self._test_image_size
+
+    @test_image_size.setter
+    def test_image_size(self, image_size: Tuple[int, int]) -> None:
+        self._test_image_size = image_size
 
     def _load_cfg(self) -> None:
         """Load the configuration file for the semantic segmentation model."""
@@ -229,8 +247,8 @@ class RxSemanticSegmentation(RxBase):
 
     def _preprocess(self, image: np.ndarray) -> torch.Tensor:
         """Preprocess the image for inference."""
-        self.image_size = to_tuple(image.shape[:2])
-        return self._transform(image=image, mask=None).to(self._device)
+        self.test_image_size = to_tuple(image.shape[:2])
+        return self.transform(image=image, mask=None).to(self._device)
 
     @torch.inference_mode()
     def _predict(self, image: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
@@ -243,12 +261,15 @@ class RxSemanticSegmentation(RxBase):
         prob_mask = logits_mask.sigmoid()
         return (prob_mask > 0.5).float()
 
-    def _postprocess(self, mask: torch.Tensor) -> np.ndarray:
+    def _postprocess(self, mask: torch.Tensor, **kwargs: int) -> np.ndarray:
         """Postprocess the mask to get the final segmentation mask. The mask is resized to the original
-        image size and converted to a numpy array.
+        image size and then refined using the `refine_mask` function. The refined mask returned is a binary
+        mask.
         """
-        mask = TF.resize(mask, size=self.image_size, interpolation=TF.InterpolationMode.NEAREST)
-        return mask.numpy().squeeze()
+        mask = TF.resize(mask, size=self.test_image_size)
+        mask_np = mask.squeeze().cpu().numpy()
+        mask_np = refine_mask(mask_np, **kwargs)
+        return mask_np
 
 
 if __name__ == "__main__":
@@ -267,8 +288,10 @@ if __name__ == "__main__":
 
     # instantiate count object
     detection_obj = RxDetection()
+
     # instantiate segment object
     segmentObj = RxSegmentation(config_file_YOLO)
+
     # instantiate image object
     countSegmentObj = RxVision()
 

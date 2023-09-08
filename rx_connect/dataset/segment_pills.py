@@ -1,22 +1,28 @@
 from functools import partial
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
+import albumentations as A
 import click
 import torchvision.transforms.functional as TF
 from joblib import Parallel, delayed
-from torchvision.ops import masks_to_boxes
+from skimage.segmentation import clear_border
 from torchvision.utils import save_image
 from tqdm import tqdm
 
-from rx_connect.core.images.geometry import expand_bounding_box, extract_ROI
+from rx_connect import ROOT_DIR
 from rx_connect.core.images.io import load_image
-from rx_connect.core.images.masks import fill_largest_contour, generate_grayscale_mask
-from rx_connect.core.images.transforms import resize_and_center
+from rx_connect.core.images.masks import (
+    fill_largest_contour,
+    generate_grayscale_mask,
+    separate_pills_and_masks,
+)
+from rx_connect.core.images.transforms import fix_image_orientation, resize_and_center
 from rx_connect.core.images.types import img_to_tensor
 from rx_connect.core.utils.str_utils import str_to_hash
-from rx_connect.dataset.utils import load_consumer_image_df_by_layout
+from rx_connect.dataset.utils import Layouts, load_consumer_image_df_by_layout
+from rx_connect.pipelines.segment import RxSemanticSegmentation
 from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
@@ -30,78 +36,106 @@ size. The cropped image and mask will be saved to the output directory.
 
 def segment_pills(
     image_path: Path,
+    layout: Layouts,
+    segmentation_obj: Optional[RxSemanticSegmentation],
     image_dir: Path,
     mask_dir: Path,
     target_height: int,
     target_width: int,
     expand_pixels: int,
-    bottom_crop_pixels: int,
 ) -> None:
     """Segments the pills in the image and saves the cropped image and mask to the output directory."""
     image = load_image(image_path)
-    height, width = image.shape[:2]
+    image = fix_image_orientation(image)
 
-    # Generate a grayscale mask for the image
-    mask = generate_grayscale_mask(image)
+    # Pre-process the image based on the layout type
+    if layout == Layouts.MC_C3PI_REFERENCE_SEG_V1_6:
+        # Crop the metadata from the bottom of the image
+        image = image[:-340, :]
+    elif layout == Layouts.MC_API_RXNAV_V1_3:
+        image = image[:-130, :]
+    elif layout in (Layouts.MC_COOKED_CALIBRATED_V1_2, Layouts.C3PI_Reference):
+        # Crop the borders from the image
+        image = A.CenterCrop(height=2400, width=3200)(image=image)["image"]
 
-    # Crop the metadata from the bottom of the image
-    image, mask = image[:-bottom_crop_pixels, :], mask[:-bottom_crop_pixels, :]
+    # Since MC_C3PI_REFERENCE_SEG_V1_6 layout is already segmented, we directly generate the mask.
+    # For other layouts, we use the semantic segmentation model to generate the mask.
+    if segmentation_obj is None:
+        # Generate a grayscale mask for the image
+        mask = generate_grayscale_mask(image)
+    else:
+        # Segment the image
+        mask = segmentation_obj(image, min_size=10000)
+        mask = clear_border(mask)
 
-    # Fill the largest contour in the mask
-    mask = fill_largest_contour(mask, fill_value=1)
-
-    # Convert images and masks to tensors
-    image_t, mask_t = img_to_tensor(image), img_to_tensor(mask)
-
-    # Get the bounding box for the mask
-    bbox = masks_to_boxes(mask_t).squeeze(0)
-
-    # Expand the bounding box by the specified number of pixels
-    bbox = expand_bounding_box(bbox, (height, width), expand_pixels)
-
-    # Extract the patch from the image and mask
-    image_patch = extract_ROI(image_t, bbox)
-    mask_patch = extract_ROI(mask_t, bbox)
-
-    # Resize the image and mask to a specific size
-    image_patch = resize_and_center(image_patch, target_height, target_width)
-    mask_patch = resize_and_center(
-        mask_patch, target_height, target_width, interpolation=TF.InterpolationMode.NEAREST
+    # Separate each pill and mask
+    cropped_pills, cropped_masks = separate_pills_and_masks(
+        image, mask, expand_pixels, num_pills=layout.max_pills
     )
 
-    # Save the image and mask to the output directory
-    hash_str = str_to_hash(image_path.name)
-    save_image(image_patch.float() / 255, image_dir / f"{hash_str}.jpg")
-    save_image(mask_patch.float(), mask_dir / f"{hash_str}.png")
-    """Masks are saved as PNG format as it can handle binary data without loss of information.
-    """
+    for idx, (cropped_pill, cropped_mask) in enumerate(zip(cropped_pills, cropped_masks)):
+        # Fill the largest contour in the mask
+        cropped_mask = fill_largest_contour(cropped_mask, fill_value=1)
+
+        # Convert the image and mask to tensors
+        image_t, mask_t = img_to_tensor(cropped_pill), img_to_tensor(cropped_mask)
+
+        # Resize the image and mask to a specific size
+        image_t = resize_and_center(image_t, target_height, target_width)
+        mask_t = resize_and_center(
+            mask_t, target_height, target_width, interpolation=TF.InterpolationMode.NEAREST
+        )
+
+        # Extract the foreground from the image
+        fg_image = image_t * mask_t
+
+        # Save the image and mask to the output directory
+        hash_str = str_to_hash(image_path.name)
+        save_image(fg_image.float() / 255, image_dir / f"{hash_str}_{idx}.jpg")
+        save_image(mask_t.float(), mask_dir / f"{hash_str}_{idx}.png")
+        """Masks are saved as PNG format as it can handle binary data without loss of information.
+        """
 
 
 @click.command()
 @click.option(
+    "-l",
+    "--image-layout",
+    required=True,
+    type=click.Choice(Layouts.members()),
+    help="""Select the Image layout to download. More information about the layout can be
+    obtained at https://data.lhncbc.nlm.nih.gov/public/Pills/RxImageImageLayouts.docx""",
+)
+@click.option(
     "-d",
     "--data-dir",
-    default="./data/Pill_Images",
+    default=f"{ROOT_DIR}/data/Pill_Images",
     type=click.Path(exists=True),
-    help="Path to the directory containing the MC_C3PI_REFERENCE_SEG images.",
+    help="""Path to the directory containing the pill images and the associated csv file from the
+    Computational Photography Project for Pill Identification (C3PI).""",
 )
 @click.option(
     "-o",
     "--output-dir",
-    default="./data/Pill_Images/segment",
-    help="Path to the output directory where the new cropped images and masks will be saved.",
-)
-@click.option(
-    "-b",
-    "--bottom-crop-pixels",
-    default=340,
-    show_default=True,
-    help="Number of pixels to crop from the bottom of the image to remove the metadata.",
+    default=f"{ROOT_DIR}/data/Pill_Images/RxSegment",
+    help="""Path to the directory to save the segmented images and masks. The images and masks
+    will be saved in the following structure:
+        ├── MC_C3PI_REFERENCE_SEG_V1.6
+        │   ├── images
+        │   │   ├── 00000001.jpg
+        │   │   ├── 00000002.jpg
+        │   │   ├── ...
+        │   ├── masks
+        │   │   ├── 00000001.png
+        │   │   ├── 00000002.png
+        │   │   ├── ...
+        │   ├── ...
+    """,
 )
 @click.option(
     "-e",
     "--expand-pixels",
-    default=50,
+    default=5,
     show_default=True,
     help="Number of pixels to expand the bounding box.",
 )
@@ -114,42 +148,65 @@ def segment_pills(
     show_default=True,
     help="The number of CPU cores to use. Use 1 for debugging.",
 )
+@click.option(
+    "-d",
+    "--device",
+    default="cpu",
+    help="""Device to use for inference. If not specified, defaults to the best available device.
+    Not applicable for MC_C3PI_REFERENCE_SEG_V1_6 layout.""",
+)
 def main(
+    image_layout: str,
     data_dir: Union[str, Path],
     output_dir: Union[str, Path],
-    bottom_crop_pixels: int,
     expand_pixels: int,
     height: int,
     width: int,
     num_cpu: int,
+    device: str,
 ) -> None:
-    layout = "MC_C3PI_REFERENCE_SEG_V1.6"
+    layout = Layouts[image_layout]
     data_dir, output_dir = Path(data_dir), Path(output_dir)
+    original_images_dir = data_dir / "images" / layout.name
+    output_dir = output_dir / layout.name
 
     # Create image and mask directories
-    image_dir, mask_dir = output_dir / "images", output_dir / "masks"
+    image_dir, mask_dir = output_dir / "images", output_dir / "masks"  # type: ignore
     image_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
 
     # Load all the appropriate Reference Segmentation Layout images
     df = load_consumer_image_df_by_layout(data_dir, layout)
+    if len(df) == 0:
+        raise ValueError(
+            f"No images found for the {layout.name} layout. Did you download the data? "
+            f"If not, run `python rx_connect.datasets.scrape_nih_images` to download the data first."
+        )
 
     # Filter out images that have already been segmented or don't exist
     images_to_segment = [
-        data_dir / image_name
+        original_images_dir / image_name
         for image_name in df.FileName.unique()
-        if (data_dir / image_name).exists() and not (mask_dir / f"{str_to_hash(image_name)}.png").exists()
+        if (original_images_dir / image_name).exists()
+        and not (mask_dir / f"{str_to_hash(image_name)}_0.png").exists()
     ]
     logger.info(f"Found {len(images_to_segment)} images to segment.")
 
+    # Initialize the segmentation object and transforms
+    segmentation_obj: Optional[RxSemanticSegmentation] = None
+    if layout != Layouts.MC_C3PI_REFERENCE_SEG_V1_6:
+        segmentation_obj = RxSemanticSegmentation(device=device)
+        segmentation_obj._image_size = layout.dimensions
+
     # Generate images and annotations and save them
     kwargs = {
+        "layout": layout,
+        "segmentation_obj": segmentation_obj,
         "image_dir": image_dir,
         "mask_dir": mask_dir,
         "target_height": height,
         "target_width": width,
         "expand_pixels": expand_pixels,
-        "bottom_crop_pixels": bottom_crop_pixels,
     }
     Parallel(n_jobs=num_cpu)(
         delayed(partial(segment_pills, **kwargs))(image_path)

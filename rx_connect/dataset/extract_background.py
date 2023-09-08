@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from rx_connect.core.images.io import load_image
 from rx_connect.core.utils.str_utils import str_to_hash
-from rx_connect.dataset.utils import load_consumer_image_df_by_layout
+from rx_connect.dataset.utils import Layouts, load_consumer_image_df_by_layout
 from rx_connect.pipelines.detection import RxDetection
 from rx_connect.pipelines.image import RxVision
 from rx_connect.tools.logging import setup_logger
@@ -83,7 +83,7 @@ def main(
     min_area = min_bg_height * min_bg_width
 
     # Load all the appropriate consumer grade images
-    df = load_consumer_image_df_by_layout(data_dir, "C3PI_Test")
+    df = load_consumer_image_df_by_layout(data_dir, Layouts.C3PI_Test)
 
     # Initialize the Detection and Vision objects
     detection_obj = RxDetection()
