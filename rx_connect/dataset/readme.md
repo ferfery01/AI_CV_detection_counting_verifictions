@@ -4,7 +4,7 @@ This folder contains three specialized scripts designed for processing and manip
 
 ## 1. Scrape NIH Pill Images
 
-The `scrape_nih_pill_images` script automates the download process of consumer images from the NIH Pill Image Recognition Challenge. It supports various file formats including image and video extensions. All the downloaded images, as well as associated XML files, are saved to the specified directory.
+The `scrape_nih_pill_images.py` script automates the download process of consumer images from the NIH Pill Image Recognition Challenge. It supports various file formats including image and video extensions. All the downloaded images, as well as associated XML files, are saved to the specified directory.
 
 The downloaded files will be structured as follows:
 
@@ -68,12 +68,24 @@ Make sure to download the `directory_consumer_grade_images.xlsx` file from [this
 
 ## 3. Segmenting Pills
 
-The segment_pills.py script segments pills within the `MC_C3PI_REFERENCE_SEG_V1.6` layout. Operations include cropping metadata, filling contours, bounding box manipulation, and resizing. Cropped images and masks are saved to the defined output directory.
+The `segment_pills.py` script is used to segments pills from the background. Cropped images and masks are saved to the defined output directory.
 
 ### Usage
 
 Execute the script using the following command:
 
 ```shell
-python segment_pills.py -d <DATA_DIR> -o <OUTPUT_DIR> -b <BOTTOM_CROP_PIXELS> -e <EXPAND_PIXELS> -h <HEIGHT> -w <WIDTH> -c <NUM_CPU>
+python segment_pills.py -l <LAYOUT> -d <DATA_DIR> -o <OUTPUT_DIR> -e <EXPAND_PIXELS> -h <HEIGHT> -w <WIDTH> -c <NUM_CPU>
+```
+
+## 4. Extract Metadata
+
+The `parse_metadata.py` script is used to create a csv file containing all the metadata information for all the pills in the "NIH Pill Image Recognition Challenge". Make sure to download all the XML files associdated with the NIH data using `scrape_nih_pill_images.py` script.
+
+### Usage
+
+Execute the script using the following command:
+
+```shell
+python parse_metadata.py --data-dir <DATA_DIR>
 ```

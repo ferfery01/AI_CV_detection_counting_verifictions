@@ -38,6 +38,16 @@ class Layouts(Enum):
         """Returns the maximum number of pills in an image for the layout."""
         return LAYOUT_METADATA[self].max_pills
 
+    @classmethod
+    def value_to_enum(cls, value: str) -> "Layouts":
+        """Converts the string to its corresponding Layouts enum. If the string is not a valid layout,
+        an error is raised.
+        """
+        try:
+            return cls(value)
+        except ValueError:
+            raise ValueError(f"Invalid layout: {value} not in {cls.members()}")
+
 
 class Metadata(NamedTuple):
     """Metadata for each layout."""

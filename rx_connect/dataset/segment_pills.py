@@ -149,7 +149,6 @@ def segment_pills(
     help="The number of CPU cores to use. Use 1 for debugging.",
 )
 @click.option(
-    "-d",
     "--device",
     default="cpu",
     help="""Device to use for inference. If not specified, defaults to the best available device.
