@@ -54,7 +54,7 @@ class RxDetection(RxBase):
         """Detection network inference function. This function takes an image and returns a list
         of dictionaries with keys: bboxes_xyxy, confidence, class_id, class_name, and class_confidence.
         """
-        model_pred = self._model.predict(image, conf=self._conf)
+        model_pred = self._model.predict(image, conf=self._conf, fuse_model=False)
         return list(model_pred._images_prediction_lst)[0].prediction
 
     def _postprocess(self, model_pred: DetectionPrediction) -> DetectionPrediction:

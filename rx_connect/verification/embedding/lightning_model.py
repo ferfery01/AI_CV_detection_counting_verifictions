@@ -30,7 +30,7 @@ class EmbeddingLightningModel(L.LightningModule):
         self.model = model
         self.similar_fn = F.cosine_similarity
         self.relu = nn.ReLU()
-        self.criterion = nn.BCELoss()
+        self.criterion = nn.MSELoss()
         self.epoch_margin: List[float] = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -51,24 +51,25 @@ class EmbeddingLightningModel(L.LightningModule):
 
         ref_vec = self(ref_img)
         query_vec = self(query_img)
-        similarities = self.relu(self.similar_fn(query_vec.unsqueeze(1), ref_vec.unsqueeze(0), dim=2))
-        pos_sim = torch.min(
-            torch.cat([similarities[:ref0_count, 0], similarities[ref0_count:, 1]])
-        ).unsqueeze(0)
-        neg_sim = torch.max(
-            torch.cat([similarities[:ref0_count, 1], similarities[ref0_count:, 0]])
-        ).unsqueeze(0)
+
+        sample_0 = torch.cat([query_vec[:ref0_count], ref_vec[0].unsqueeze(0)])
+        sample_1 = torch.cat([query_vec[ref0_count:], ref_vec[1].unsqueeze(0)])
+        pos0 = self.similar_fn(sample_0.unsqueeze(1), sample_0.unsqueeze(0), dim=2)
+        pos1 = self.similar_fn(sample_1.unsqueeze(1), sample_1.unsqueeze(0), dim=2)
+        A2A_neg = self.similar_fn(sample_0.unsqueeze(1), sample_1.unsqueeze(0), dim=2)
+        cluster_pos = torch.min(torch.cat([pos0.view(-1), pos1.view(-1)])).unsqueeze(0) / 2 + 0.5  # type: ignore
+        cluster_neg = torch.max(A2A_neg).unsqueeze(0) / 2 + 0.5
 
         assert hasattr(self.logger, "log_metrics")
-        margin = pos_sim - neg_sim
-        margin_loss = self.criterion(pos_sim, torch.Tensor([1]).to(self.device)) + self.criterion(
-            neg_sim, torch.Tensor([0]).to(self.device)
+        margin = cluster_pos - cluster_neg
+        margin_loss = self.criterion(cluster_pos, torch.Tensor([1]).to(self.device)) + self.criterion(
+            cluster_neg, torch.Tensor([0]).to(self.device)
         )
 
         self.log_dict(
             {
-                "pos_sim": pos_sim.item(),
-                "neg_sim": neg_sim.item(),
+                "cluster_pos": cluster_pos.item(),
+                "cluster_neg": cluster_neg.item(),
                 "margin": margin.item(),
                 "margin_loss": margin_loss.item(),
             }
@@ -88,5 +89,5 @@ class EmbeddingLightningModel(L.LightningModule):
         return ContinuousLearningDataLoader(mode="train")
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)
         return optimizer

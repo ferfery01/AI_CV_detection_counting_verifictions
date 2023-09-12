@@ -6,13 +6,13 @@ from rx_connect import CKPT_DIR
 from rx_connect.verification.embedding.base import ResNetEmbeddingModel
 from rx_connect.verification.embedding.lightning_model import EmbeddingLightningModel
 
-logger = TensorBoardLogger("lightning_logs", name="RL_vectorizer")
+logger = TensorBoardLogger("lightning_logs", name="RL_vectorizer_resnet18")
 
-EmbModel = ResNetEmbeddingModel("resnet50")
+EmbModel = ResNetEmbeddingModel("resnet18")
 model = EmbeddingLightningModel(EmbModel)
 checkpoint_callback = ModelCheckpoint(
     dirpath=CKPT_DIR,
-    filename="{epoch}-{epoch_avg_margin:.2f}",
+    filename="resnet18-{epoch}-{epoch_avg_margin:.2f}",
     save_top_k=10,
     monitor="epoch_avg_margin",
     mode="max",
