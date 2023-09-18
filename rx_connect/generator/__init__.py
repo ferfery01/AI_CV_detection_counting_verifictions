@@ -1,4 +1,5 @@
 from enum import Enum, auto
+from typing import NamedTuple
 
 """This module contains the currently supported colors and shapes in the dataset generation
 pipeline.
@@ -37,6 +38,16 @@ class Shapes(Enum):
     TEAR = auto()
     TRAPEZOID = auto()
     TRIANGLE = auto()
+
+
+class PillMetadata(NamedTuple):
+    """Named tuple for storing the pill/drug metadata."""
+
+    drug_name: str
+    ndc: str
+    color: str
+    shape: str
+    imprint: str
 
 
 COLORS_LIST = [color.name.upper() for color in Colors]

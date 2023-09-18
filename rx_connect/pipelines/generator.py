@@ -7,7 +7,7 @@ import pandas as pd
 
 from rx_connect import SHARED_RXIMAGE_DATA_DIR
 from rx_connect.core.types.generator import PillMaskPaths
-from rx_connect.generator import Colors, Shapes
+from rx_connect.generator import Colors, PillMetadata, Shapes
 from rx_connect.generator.composition import (
     ImageComposition,
     densify_groundtruth,
@@ -16,8 +16,10 @@ from rx_connect.generator.composition import (
 from rx_connect.generator.io_utils import (
     filter_pill_mask_paths,
     get_background_image,
+    load_metadata,
     load_pill_mask_paths,
     load_pills_and_masks,
+    parse_file_hash,
     random_sample_pills,
 )
 from rx_connect.generator.transform import apply_augmentations
@@ -56,6 +58,11 @@ class RxImageGenerator:
     """
     num_pills_type: int = 1
     """Different types of pills to generate
+    """
+    fraction_pills_type: Optional[Sequence[float]] = None
+    """The fraction of pills per type to generate. If None, then the number of pills per type is
+    randomly sampled from the range (1, num_pills_type). If a sequence is provided, then it is
+    ensured that each type of pill has a specific fraction of pills in the generated image.
     """
     colors: Optional[Union[str, Sequence[str], Colors, Sequence[Colors]]] = None
     """Pills of a specific colors to generate. If None, then pills of any colors are generated.
@@ -104,15 +111,16 @@ class RxImageGenerator:
     _image_dir: Path = field(init=False, repr=False)
     """Placeholder for the pill images and masks directory
     """
-    _sampled_pills_path: List[Path] = field(init=False, repr=False)
-    """Placeholder for the sampled pill images paths
-    """
     _pill_mask_paths: List[PillMaskPaths] = field(init=False, repr=False)
     """Placeholder for the pill images and masks paths
     """
-    _metadata_df: Optional[pd.DataFrame] = field(default=None, repr=False)
-    """Pandas dataframe containing the metadata. If None, then the metadata is loaded from the
-    `data_dir` directory.
+    _metadata: List[PillMetadata] = field(init=False, repr=False)
+    """Placeholder for the metadata for the sampled pills. The order of the metadata is the same as the
+    order of the sampled pills.
+    """
+    _metadata_df: Optional[pd.DataFrame] = field(init=False, repr=False)
+    """Placeholder for the Pandas dataframe containing the metadata with `File_Hash` as the index
+    It is loaded from the `metadata.csv` file stored in the `data_dir` directory, if it exists.
     """
     _filtered_pill_mask_paths: Sequence[PillMaskPaths] = field(init=False, repr=False)
     """Placeholder for the filtered pill images and masks paths based on the color and shape.
@@ -128,16 +136,19 @@ class RxImageGenerator:
     """
 
     def __post_init__(self) -> None:
+        if self.fraction_pills_type is not None and len(self.fraction_pills_type) != self.num_pills_type:
+            raise ValueError(
+                f"Length of `fraction_pills_type` should be {self.num_pills_type}, but got "
+                f"{len(self.fraction_pills_type)}. Please provide a fraction for each pill type."
+            )
+
         self.data_dir = Path(self.data_dir)
 
         # Load the pill images and the associated mask paths.
         self._pill_mask_paths = load_pill_mask_paths(self.data_dir)
 
         # Filter the pill images and masks based on the color and shape.
-        if (csv_path := self.data_dir / "metadata.csv").exists():
-            self._metadata_df = pd.read_csv(csv_path)
-
-        # Filter the pill images and masks based on the color and shape.
+        self._metadata_df = load_metadata(self.data_dir)
         self._filtered_pill_mask_paths = filter_pill_mask_paths(
             self._pill_mask_paths, self._metadata_df, colors=self.colors, shapes=self.shapes
         )
@@ -162,6 +173,33 @@ class RxImageGenerator:
             densified_references.append(pill_image[xmin:xmax, ymin:ymax])
         return densified_references
 
+    @property
+    def metadata(self) -> List[PillMetadata]:
+        """Returns the metadata for the sampled reference pills. The order of the metadata is the same as the
+        order of the sampled pills. If no metadata is available, then an empty list is returned.
+        """
+        return self._metadata
+
+    def _get_metadata(self) -> List[PillMetadata]:
+        """Extract the metadata for the sampled reference pills from the metadata dataframe."""
+        if self._metadata_df is None:
+            return []
+
+        metadata_list: List[PillMetadata] = []
+        for img_path in self.sampled_images_path:
+            file_hash = parse_file_hash(img_path)
+            metadata = self._metadata_df.loc[file_hash].to_dict()
+            metadata_list.append(
+                PillMetadata(
+                    drug_name=metadata["GenericName"],
+                    ndc=str(metadata["NDC9"]),
+                    color=metadata["Color"],
+                    shape=metadata["Shape"],
+                    imprint=metadata["Imprint"],
+                )
+            )
+        return metadata_list
+
     def config_background(
         self,
         path: Optional[Union[str, Path]] = None,
@@ -185,6 +223,7 @@ class RxImageGenerator:
         self._sampled_img_mask_paths = random_sample_pills(
             self._filtered_pill_mask_paths, self.num_pills_type
         )
+        self._metadata = self._get_metadata()
         self._pill_images, self._pill_masks = load_pills_and_masks(
             self._sampled_img_mask_paths, thresh=self.thresh, color_aug=True
         )
@@ -193,7 +232,7 @@ class RxImageGenerator:
         """Generate synthetic images along with the masks and labels.
 
         Args:
-            new_bg: If True, new background image is loaded. Otherwise, the loaded background
+            new_bg: If True, new background image is loaded, otherwise, the last loaded background
                 image is used.
             new_pill: If True, new pill images and masks are loaded. Otherwise, the loaded pill
                 images and masks are used.
@@ -214,6 +253,7 @@ class RxImageGenerator:
             self._pill_masks,
             min_pills=self.num_pills[0],
             max_pills=self.num_pills[1],
+            fraction_pills_type=self.fraction_pills_type,
             scale=self.scale,
             max_overlap=self.max_overlap,
             max_attempts=self.max_attempts,

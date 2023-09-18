@@ -11,7 +11,7 @@ from rx_connect import CACHE_DIR
 from rx_connect.core.types.generator import SEGMENTATION_LABELS, PillMask, PillMaskPaths
 from rx_connect.core.utils.io_utils import get_matching_files_in_dir
 from rx_connect.core.utils.str_utils import convert_to_string_list
-from rx_connect.generator import Colors, Shapes
+from rx_connect.generator import COLORS_LIST, SHAPES_LIST, Colors, Shapes
 from rx_connect.generator.transform import resize_bg
 from rx_connect.tools import is_remote_dir
 from rx_connect.tools.data_tools import (
@@ -59,6 +59,35 @@ def get_unmasked_image_paths(image_folder: Union[str, Path], output_folder: Unio
     return unmasked_image_paths
 
 
+def load_metadata(data_dir: Union[str, Path]) -> Optional[pd.DataFrame]:
+    """Loads metadata for pill images and masks from a specified directory. The metadata
+    is stored in a CSV file named `metadata.csv`.
+
+    Args:
+        data_dir: The directory containing all the pill images, the corresponding
+            masks, and/or the associated metadata. It can be a local directory or a
+            remote directory on AI Lab GPU servers.
+
+    Returns:
+        Optional[pd.DataFrame]: DataFrame containing metadata associated with all the pill images.
+            The index of the DataFrame is the file hash of the pill image. If the metadata file
+            is not found, then None is returned.
+    """
+    data_dir = Path(data_dir)
+    df_path = data_dir / "metadata.csv"
+
+    try:
+        df_path = fetch_from_remote(df_path, cache_dir=CACHE_DIR / data_dir.name)
+        df = pd.read_csv(df_path).set_index("File_Hash")
+        return df
+    except FileNotFoundError:
+        logger.warning(f"Metadata file not found at {df_path}. Skipping loading metadata.")
+    except Exception as e:
+        logger.error(f"Error loading metadata from {df_path}: {e}")
+
+    return None
+
+
 def load_pill_mask_paths(data_dir: Union[str, Path]) -> List[PillMaskPaths]:
     """Load all the pill images and the corresponding masks path.
 
@@ -99,6 +128,18 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> List[PillMaskPaths]:
     return img_mask_paths
 
 
+def parse_file_hash(file_path: Union[str, Path]) -> str:
+    """Parse the file hash from the file path.
+
+    Args:
+        file_path: The path to the pill image or mask.
+
+    Returns:
+        str: The file hash.
+    """
+    return Path(file_path).stem.rsplit("_")[0]
+
+
 def filter_pill_mask_paths(
     pill_mask_paths: Sequence[PillMaskPaths],
     df: Optional[pd.DataFrame] = None,
@@ -126,19 +167,15 @@ def filter_pill_mask_paths(
     # Convert the colors and shapes to a list of strings
     colors = convert_to_string_list(colors, Colors)
     shapes = convert_to_string_list(shapes, Shapes)
+    colors = COLORS_LIST if (colors is None or len(colors) == 0) else colors
+    shapes = SHAPES_LIST if (shapes is None or len(shapes) == 0) else shapes
 
-    # Create a mask with all True values
-    mask = pd.Series([True] * len(df))
+    # Filter the dataframe based on the color and shape
+    mask = pd.Series(df.Color.isin(colors) & df.Shape.isin(shapes))
 
-    # Filter the mask based on the color, if provided
-    if colors is not None and len(colors) > 0:
-        mask = mask & (df.Color.isin(colors))
-
-    # Filter the mask based on the shape, if provided
-    if shapes is not None and len(shapes) > 0:
-        mask = mask & (df.Shape.isin(shapes))
-
-    filtered_hashes = set(df[mask].File_Hash)
+    # Get all the file hashes that match the color and shape
+    # `File_Hash` exists as the Index of the dataframe
+    filtered_hashes = set(df[mask].index)
     if len(filtered_hashes) == 0:
         raise ValueError(f"No pills found with color={colors} and shape={shapes}.")
 
@@ -147,9 +184,9 @@ def filter_pill_mask_paths(
     # - This hash ends in either 0 (front side) or 1 (back side).
     # - We remove these indicators before comparing the hashes.
     filtered_pill_mask_paths = [
-        paths for paths in pill_mask_paths if paths.img_path.stem.rsplit("_")[0] in filtered_hashes
+        paths for paths in pill_mask_paths if parse_file_hash(paths.img_path) in filtered_hashes
     ]
-    logger.info(f"Found {len(filtered_pill_mask_paths)} pills with color={colors} and shape={shapes}.")
+    logger.info(f"Found {len(filtered_pill_mask_paths)} pills with:\n color: {colors}\n shape: {shapes}.")
     return filtered_pill_mask_paths
 
 

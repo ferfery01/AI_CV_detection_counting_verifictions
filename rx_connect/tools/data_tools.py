@@ -48,15 +48,21 @@ def fetch_from_remote(
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(exist_ok=True, parents=True)
 
-    # Fetch the file/folder from the remote server, if it does not exist locally
+    # Fetch the file/folder from the remote server, if not in cache or if ignoring existence
     local_path = cache_dir / remote_path.name
     if not local_path.exists() or ignore_exist:
         try:
-            subprocess.run(["rsync", "-ruq", f"{server_ip}:{remote_path}", local_path], timeout=timeout)
+            result = subprocess.run(
+                ["rsync", "-azq", f"{server_ip}:{remote_path}", local_path], timeout=timeout
+            )
         except subprocess.TimeoutExpired as e:
             logger.error(f"Timeout expired when fetching {remote_path} from {server_ip}. Are you on VPN?")
             raise e
-    assert local_path.exists(), f"Error: Failed to cache {remote_path} from {server_ip}."
+
+        if result.returncode == 23:
+            raise FileNotFoundError(f"{remote_path} not found on {server_ip}.")
+        elif result.returncode != 0:
+            raise ValueError(f"Failed to fetch {remote_path} from {server_ip}.")
 
     return local_path
 

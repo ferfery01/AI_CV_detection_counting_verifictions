@@ -128,6 +128,15 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
     help="Number of different types of pills on each image",
 )
 @click.option(
+    "-pf",
+    "--pill-fractions",
+    default=None,
+    type=float,
+    multiple=True,
+    help="""Fractions of pills per drug type. The fractions must sum to 1. If omitted, the
+    fractions are sampled uniformly.""",
+)
+@click.option(
     "-c",
     "--colors",
     multiple=True,
@@ -249,8 +258,9 @@ def main(
     mode: str,
     n_images: int,
     n_pill_types: int,
-    colors: Tuple[str],
-    shapes: Tuple[str],
+    pill_fractions: Optional[Tuple[float, ...]],
+    colors: Tuple[str, ...],
+    shapes: Tuple[str, ...],
     scale: Tuple[float, float],
     min_pills: int,
     max_pills: int,
@@ -275,6 +285,7 @@ def main(
         image_size=(min_bg_dim, max_bg_dim),
         num_pills=(min_pills, max_pills),
         num_pills_type=n_pill_types,
+        fraction_pills_type=pill_fractions,
         colors=colors,
         shapes=shapes,
         scale=scale,

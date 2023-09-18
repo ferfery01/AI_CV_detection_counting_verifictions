@@ -66,6 +66,30 @@ def random_partition(number: int, num_parts: int) -> List[int]:
     return parts
 
 
+def partition_by_fraction(number: int, fractions: Sequence[float]) -> List[int]:
+    """Generates a list of integers that add up to a specified number.
+
+    Args:
+        number (int): The number to be divided into multiple parts.
+        fractions (Sequence[float]): The fractions of the number to be divided into.
+
+    Returns:
+        A list of integers that add up to number.
+    """
+    if abs(sum(fractions) - 1) > 1e-3:
+        raise ValueError("The fractions must sum to 1.")
+
+    parts: List[int] = [int(number * fraction) for fraction in fractions]
+
+    # Sort the parts in descending order.
+    parts = sorted(parts, reverse=True)
+
+    # Add the remaining number to the last part.
+    parts[-1] += number - sum(parts)
+
+    return parts
+
+
 def sample_pill_location(pill_size: Tuple[int, int], bg_size: Tuple[int, int]) -> Tuple[int, int]:
     """Sample the top left corner of the pill to be placed on the background image.
 
@@ -216,6 +240,7 @@ def generate_image(
     pill_masks: List[np.ndarray],
     min_pills: int = 5,
     max_pills: int = 15,
+    fraction_pills_type: Optional[Sequence[float]] = None,
     scale: Union[float, Tuple[float, float]] = 1.0,
     max_overlap: float = 0.2,
     max_attempts: int = 10,
@@ -230,6 +255,7 @@ def generate_image(
         pill_masks: A list of pill masks.
         min_pills: The minimum number of pills to compose.
         max_pills: The maximum number of pills to compose.
+        fraction_pills_type: The fraction of pills per type.
         scale: The scaling factor to use for rescaling the pill image and mask. If a tuple is provided,
             then the scaling factor is randomly sampled from the range (min, max). If a float is
             provided, then the scaling factor is fixed.
@@ -253,8 +279,12 @@ def generate_image(
     # Randomly sample the number of pills to compose.
     num_pills = np.random.randint(min_pills, max_pills + 1)
 
-    # Randomly sample the number of pills per type.
-    pills_per_type = random_partition(num_pills, len(pill_images))
+    # Sample the number of pills per type.
+    pills_per_type = (
+        random_partition(num_pills, len(pill_images))
+        if fraction_pills_type is None
+        else partition_by_fraction(num_pills, fraction_pills_type)
+    )
 
     # Randomly sample the scaling factor from the given range
     scale_factor = random.uniform(*to_tuple(scale))
