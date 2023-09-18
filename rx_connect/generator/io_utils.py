@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Set, Tuple, Union
+from typing import List, Optional, Sequence, Set, Tuple, Union
 
 import albumentations as A
 import numpy as np
@@ -12,7 +12,7 @@ from rx_connect.core.types.generator import SEGMENTATION_LABELS, PillMask, PillM
 from rx_connect.core.utils.io_utils import get_matching_files_in_dir
 from rx_connect.core.utils.str_utils import convert_to_string_list
 from rx_connect.generator import COLORS_LIST, SHAPES_LIST, Colors, Shapes
-from rx_connect.generator.transform import resize_bg
+from rx_connect.generator.transform import BACKGROUND_TRANSFORMS, resize_bg
 from rx_connect.tools import is_remote_dir
 from rx_connect.tools.data_tools import (
     fetch_file_paths_from_remote_dir,
@@ -364,23 +364,18 @@ def load_bg_image(path: Path, min_dim: int = 1024, max_dim: int = 1920) -> np.nd
     return bg_img
 
 
-def generate_random_bg(height: int, width: int, color_tint: int = 5) -> np.ndarray:
+def generate_random_bg(height: int, width: int) -> np.ndarray:
     """Generate a random background image.
 
     Args:
         height (int): height of the background image.
         width (int): width of the background image.
-        color_tint (int): Controls the aggressiveness of the color tint applied to the
-            background. The higher the value, the more aggressive the color tint. The value
-            should be between 0 and 20.
 
     Returns:
         np.ndarray: random background image.
     """
-    assert 0 <= color_tint <= 20, "color_tint should be between 0 and 20."
-
     # Generate a random color for the background
-    background_color = np.random.randint(max(0, 200 - color_tint * 10), 256, size=(3,)).tolist()
+    background_color = np.random.randint(150, 256, size=(3,)).tolist()
 
     # Create a black background image
     background_image = np.zeros((height, width, 3), np.uint8)
@@ -395,7 +390,7 @@ def get_background_image(
     path: Optional[Union[str, Path]] = None,
     min_bg_dim: int = 2160,
     max_bg_dim: int = 3840,
-    **kwargs: Any,
+    apply_augmentations: bool = True,
 ) -> np.ndarray:
     """Get the background image.
         1. If no background image path is provided, generate a random color background
@@ -406,13 +401,14 @@ def get_background_image(
         path: Path to the background image or directory of background images
         min_bg_dim: Minimum dimension of the background image
         max_bg_dim: Maximum dimension of the background image
+        apply_augmentations: Whether to apply augmentations to the background image
 
     Returns:
         Background image as a numpy array resized to the specified dimensions
     """
     if path is None:
         # Generate random color background if no background image is provided
-        bg_image = generate_random_bg(min_bg_dim, max_bg_dim, **kwargs)
+        bg_image = generate_random_bg(min_bg_dim, max_bg_dim)
     else:
         path = Path(path)
         if path.is_file():
@@ -424,5 +420,9 @@ def get_background_image(
             bg_image = load_bg_image(random.choice(paths), min_bg_dim, max_bg_dim)
         else:
             raise FileNotFoundError(f"Could not find background image file or directory at {path}.")
+
+    if apply_augmentations:
+        transforms = A.OneOf(BACKGROUND_TRANSFORMS)
+        bg_image = transforms(image=bg_image)["image"]
 
     return bg_image

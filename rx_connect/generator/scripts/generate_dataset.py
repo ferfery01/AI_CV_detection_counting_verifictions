@@ -130,7 +130,6 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
 @click.option(
     "-pf",
     "--pill-fractions",
-    default=None,
     type=float,
     multiple=True,
     help="""Fractions of pills per drug type. The fractions must sum to 1. If omitted, the
@@ -205,32 +204,20 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
     help="Maximum dimension of the background image",
 )
 @click.option(
-    "-ct",
-    "--color-tint",
-    default=5,
-    type=click.IntRange(0, 20),
-    help="""Controls the aggressiveness of the color tint applied to the background.
-    The higher the value, the more aggressive the color tint. The value
-    should be between 0 and 20. Only used if --bg-image-path is not provided.
-    """,
+    "-aba/-dba",
+    "--apply-bg-aug/--dont-apply-bg-aug",
+    default=True,
+    show_default=True,
+    help="""Whether to apply augmentations to the background image. This is useful for generating
+    images with diverse backgrounds.""",
 )
 @click.option(
-    "-ac/-dac",
-    "--apply-color/--dont-apply-color",
+    "-aca/-dca",
+    "--apply-composed-aug/--dont-apply-composed-aug",
     default=True,
-    type=bool,
     show_default=True,
-    help="""Apply color augmentations to the composed image. This is useful fot simulating
-    different lighting conditions.""",
-)
-@click.option(
-    "-an/-dan",
-    "--apply-noise/--dont-apply-noise",
-    default=True,
-    type=bool,
-    show_default=True,
-    help="""Apply noise augmentations to the composed image. This is useful for simulating
-    different camera conditions.""",
+    help="""Whether to apply augmentations to the composed image. This is useful for simulating
+    different lighting conditions and camera conditions.""",
 )
 @click.option(
     "-ed",
@@ -258,7 +245,7 @@ def main(
     mode: str,
     n_images: int,
     n_pill_types: int,
-    pill_fractions: Optional[Tuple[float, ...]],
+    pill_fractions: Tuple[float, ...],
     colors: Tuple[str, ...],
     shapes: Tuple[str, ...],
     scale: Tuple[float, float],
@@ -268,9 +255,8 @@ def main(
     max_attempts: int,
     min_bg_dim: int,
     max_bg_dim: int,
-    color_tint: int,
-    apply_color: bool,
-    apply_noise: bool,
+    apply_bg_aug: bool,
+    apply_composed_aug: bool,
     enable_defective_pills: bool,
     enable_edge_pills: bool,
     num_cpu: int,
@@ -285,15 +271,14 @@ def main(
         image_size=(min_bg_dim, max_bg_dim),
         num_pills=(min_pills, max_pills),
         num_pills_type=n_pill_types,
-        fraction_pills_type=pill_fractions,
+        fraction_pills_type=pill_fractions if len(pill_fractions) > 0 else None,
         colors=colors,
         shapes=shapes,
         scale=scale,
         max_overlap=max_overlap,
         max_attempts=max_attempts,
-        color_tint=color_tint,
-        apply_color=apply_color,
-        apply_noise=apply_noise,
+        apply_bg_aug=apply_bg_aug,
+        apply_composed_aug=apply_composed_aug,
         enable_defective_pills=enable_defective_pills,
         enable_edge_pills=enable_edge_pills,
     )

@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
+import albumentations as A
 import numpy as np
 import pandas as pd
 
@@ -22,7 +23,7 @@ from rx_connect.generator.io_utils import (
     parse_file_hash,
     random_sample_pills,
 )
-from rx_connect.generator.transform import apply_augmentations
+from rx_connect.generator.transform import COMBINED_TRANSFORMS
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.timers import timer
 
@@ -86,18 +87,13 @@ class RxImageGenerator:
     thresh: int = 25
     """The threshold at which to binarize the mask. Useful only for the old ePillID masks.
     """
-    color_tint: int = 0
-    """Controls the aggressiveness of the color tint applied to the background.
-    The higher the value, the more aggressive the color tint. The value
-    should be between 0 and 20. Only used if `bg_dir` is None.
+    apply_bg_aug: bool = True
+    """Whether to apply augmentations to the background image. This is useful for generating
+    images with diverse backgrounds.
     """
-    apply_color: bool = True
-    """Whether to apply color augmentations to the generated images. This is useful
-    for generating images with different lighting conditions.
-    """
-    apply_noise: bool = True
-    """Whether to apply noise augmentations to the generated images. This is useful
-    for simulating images taken with different camera conditions.
+    apply_composed_aug: bool = True
+    """Whether to apply augmentations to the composed image. This is useful for simulating
+    different lighting conditions and camera conditions.
     """
     enable_defective_pills: bool = False
     """Whether to allow defective pills to be generated.
@@ -154,7 +150,7 @@ class RxImageGenerator:
         )
 
         # Set the background image
-        self.config_background(self.bg_dir, self.image_size, color_tint=self.color_tint)
+        self.config_background(self.bg_dir, self.image_size)
 
         # Load the pill images and masks
         self.config_pills()
@@ -204,19 +200,16 @@ class RxImageGenerator:
         self,
         path: Optional[Union[str, Path]] = None,
         image_size: Optional[Tuple[int, int]] = None,
-        color_tint: Optional[int] = None,
     ) -> None:
         """Configure the background image. If no path is given, a random colored background is loaded.
         If a directory is provided, a random image is selected in each call.
         If no image size is given, the default image size is used.
 
         Calling this method will reset the background image to the new image. You can also adjust the
-        iamge size and the color tint of the background by passing the `image_size` and `color_tint`
-        during the runtime.
+        image size by passing the `image_size` during the runtime.
         """
         image_size = image_size or self.image_size
-        color_tint = color_tint or self.color_tint
-        self._bg_image = get_background_image(path, *image_size, color_tint=color_tint)
+        self._bg_image = get_background_image(path, *image_size, apply_augmentations=self.apply_bg_aug)
 
     def config_pills(self) -> None:
         """Configure the pill images and masks."""
@@ -261,8 +254,10 @@ class RxImageGenerator:
             enable_edge_pills=self.enable_edge_pills,
         )
 
-        # Apply color and/or noise augmentations
-        img_comp = apply_augmentations(img_comp, apply_color=self.apply_color, apply_noise=self.apply_noise)
+        # Apply augmentations to the composed image
+        if self.apply_composed_aug:
+            transform = A.OneOf(COMBINED_TRANSFORMS)
+            img_comp = transform(image=img_comp)["image"]
 
         return ImageComposition(img_comp, mask_comp, labels_comp, gt_bbox, pills_per_type)
 

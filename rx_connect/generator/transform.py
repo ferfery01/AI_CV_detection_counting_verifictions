@@ -2,6 +2,7 @@ import random
 from typing import Optional, Tuple, Union
 
 import albumentations as A
+import cv2
 import numpy as np
 from skimage.transform import rescale
 
@@ -9,28 +10,44 @@ from rx_connect.core.images.transforms import resize_to_square
 from rx_connect.core.types.generator import PillMask
 from rx_connect.core.utils.func_utils import to_tuple
 
-COLOR_TRANSFORMS = [
-    A.CLAHE(),
-    A.RandomBrightnessContrast(),
-    A.RandomGamma(),
-    A.MultiplicativeNoise(multiplier=(0.8, 1.2)),
-    A.RandomToneCurve(scale=0.2),
-]
-"""Albumentations composition of color transforms."""
-
-NOISE_TRANSFORMS = [
-    A.AdvancedBlur(),
-    A.MedianBlur(),
-    A.ZoomBlur(max_factor=1.05, p=0.25),
-    A.GaussNoise(),
+COMBINED_TRANSFORMS = [
+    A.CLAHE(clip_limit=10.0, tile_grid_size=(16, 16), always_apply=True),
+    A.FancyPCA(alpha=0.1),
+    A.AdvancedBlur(blur_limit=(7, 15), noise_limit=(0.5, 1.5)),
+    A.MedianBlur(blur_limit=15),
+    A.Defocus(radius=(3, 7), alias_blur=(0.1, 0.5)),
+    A.ZoomBlur(max_factor=1.025, p=0.25),
+    A.GaussianBlur(blur_limit=(5, 9), sigma_limit=0.5),
+    A.GlassBlur(sigma=0.7, max_delta=3),
+    A.MotionBlur(blur_limit=9, allow_shifted=False),
+    A.RandomSunFlare(
+        flare_roi=(0, 0, 1, 1), src_radius=200, num_flare_circles_lower=0, num_flare_circles_upper=2
+    ),
+    A.GaussNoise(var_limit=100),
     A.ImageCompression(quality_lower=50),
+    A.Downscale(scale_min=0.2, scale_max=0.5, interpolation=cv2.INTER_LINEAR),
     A.ISONoise(),
-    A.PixelDropout(dropout_prob=0.05),
+    A.Sharpen(alpha=(0.5, 1.0), lightness=(0.5, 1.0)),
     A.Emboss(alpha=(0.8, 1.0), strength=(0.7, 1.0)),
-    A.Sharpen(),
-    # A.Spatter(mode=["rain", "mud"], p=0.25),
+    A.MultiplicativeNoise(multiplier=(0.7, 1.3), per_channel=True, elementwise=True),
 ]
-"""Albumentations composition of noise transforms."""
+"""Albumentations composition for combined background and pill transforms."""
+
+BACKGROUND_TRANSFORMS = [
+    A.InvertImg(p=0.25),
+    A.ChannelShuffle(p=0.25),
+    A.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5, p=0.25),
+    A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.25),
+    A.HueSaturationValue(hue_shift_limit=30, sat_shift_limit=40, val_shift_limit=30, p=0.25),
+    A.RandomGamma(gamma_limit=(40, 160), p=0.25),
+    A.RandomToneCurve(scale=1.0, p=0.25),
+    A.RGBShift(p=0.25),
+    A.Solarize(p=0.25),
+    A.Equalize(p=0.25),
+    A.PixelDropout(dropout_prob=0.25),
+    A.Spatter(mode=["rain", "mud"]),
+]
+"""Albumentations composition for background transforms."""
 
 
 def resize_bg(img: np.ndarray, desired_max: int = 1920, desired_min: Optional[int] = None) -> np.ndarray:
@@ -148,23 +165,3 @@ def transform_pill(
     image_t = color_aug(image=image_t)["image"]
 
     return PillMask(image_t, mask_t)
-
-
-def apply_augmentations(image: np.ndarray, apply_color: bool = True, apply_noise: bool = True) -> np.ndarray:
-    """Apply random color and/or noise augmentations to the image.
-
-    The augmentations are applied with a 50% probability. If `apply_color` and `apply_noise`
-    are both False, the original image is returned. If only one of them is True, only the
-    corresponding augmentations are applied. If both are True, both augmentations are applied after one
-    another. Only one augmentations from each group is applied at a time.
-    """
-    transforms = []
-    if apply_color:
-        transforms.append(A.OneOf(COLOR_TRANSFORMS))
-    if apply_noise:
-        transforms.append(A.OneOf(NOISE_TRANSFORMS))
-
-    if len(transforms) > 0:
-        return A.Compose(transforms)(image=image)["image"]
-    else:
-        return image
