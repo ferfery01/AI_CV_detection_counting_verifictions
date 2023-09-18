@@ -1,6 +1,6 @@
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 from uuid import uuid4
 
 import click
@@ -9,8 +9,9 @@ from joblib import Parallel, delayed
 from PIL import Image
 from tqdm import trange
 
-from rx_connect import SHARED_RXIMAGE_DATA_DIR
+from rx_connect import ROOT_DIR, SHARED_RXIMAGE_DATA_DIR
 from rx_connect.core.types.generator import SEGMENTATION_LABELS, YOLO_LABELS
+from rx_connect.generator import COLORS_LIST, SHAPES_LIST
 from rx_connect.generator.annotations import create_yolo_annotations
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.tools.logging import setup_logger
@@ -80,37 +81,29 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
 
 @click.command()
 @click.option(
-    "-p",
-    "--pill-mask-path",
+    "-i",
+    "--input-dir",
     default=SHARED_RXIMAGE_DATA_DIR,
+    type=click.Path(path_type=Path),
     show_default=True,
-    help="Path to the folder with pill masks. It can be a local directory or a remote path.",
+    help="Local or remote directory containing pill images, masks, and/or a CSV file with metadata.",
 )
 @click.option(
     "-b",
     "--bg-image-path",
     default=None,
-    type=click.Path(exists=True),
+    type=click.Path(exists=True, path_type=Path),
     show_default=True,
-    help="""
-    Path to the background image. If directory, a random image will be chosen in each
-    iteration. If not provided, a random color background will be generated.
-    """,
+    help="""Path to the background image. For directories, a random image is selected each iteration.
+    When omitted, a random colored background is generated.""",
 )
 @click.option(
     "-o",
-    "--output-folder",
-    default=Path("./data/synthetic/"),
-    type=click.Path(),
+    "--output-dir",
+    default=ROOT_DIR / "data" / "synthetic",
+    type=click.Path(path_type=Path),
     show_default=True,
-    help="Path to the output folder",
-)
-@click.option(
-    "-n",
-    "--n-images",
-    default=100,
-    show_default=True,
-    help="Number of images to generate",
+    help="Directory for saving generated outputs",
 )
 @click.option(
     "-m",
@@ -121,6 +114,13 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
     help="Flag to indicate whether to generate detection, segmentation, or both types of annotations.",
 )
 @click.option(
+    "-n",
+    "--n-images",
+    default=100,
+    show_default=True,
+    help="Specify the number of images to generate.",
+)
+@click.option(
     "-np",
     "--n-pill-types",
     default=1,
@@ -128,7 +128,21 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
     help="Number of different types of pills on each image",
 )
 @click.option(
+    "-c",
+    "--colors",
+    multiple=True,
+    type=click.Choice(COLORS_LIST, case_sensitive=True),
+    help="Specify the color of the pills to use for generating the images.",
+)
+@click.option(
     "-s",
+    "--shapes",
+    multiple=True,
+    type=click.Choice(SHAPES_LIST, case_sensitive=True),
+    help="Specify the shape of the pills to use for generating the images.",
+)
+@click.option(
+    "-sc",
     "--scale",
     nargs=2,
     type=float,
@@ -222,19 +236,21 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
     help="Allow pills to be placed on the edge of the background image",
 )
 @click.option(
-    "-c",
+    "-nc",
     "--num-cpu",
     default=cpu_count() // 2,
     show_default=True,
     help="The number of CPU cores to use. Use 1 for debugging.",
 )
 def main(
-    pill_mask_path: Union[str, Path],
-    bg_image_path: Optional[Union[str, Path]],
-    output_folder: Union[str, Path],
-    n_images: int,
+    input_dir: Path,
+    bg_image_path: Optional[Path],
+    output_dir: Path,
     mode: str,
+    n_images: int,
     n_pill_types: int,
+    colors: Tuple[str],
+    shapes: Tuple[str],
     scale: Tuple[float, float],
     min_pills: int,
     max_pills: int,
@@ -248,18 +264,19 @@ def main(
     enable_defective_pills: bool,
     enable_edge_pills: bool,
     num_cpu: int,
-):
+) -> None:
     # Create output folders
-    output_path = Path(output_folder)
-    img_path, label_path = create_folders(output_path, mode)
+    img_path, label_path = create_folders(output_dir, mode)
 
     # Initialize Generator object
     generator_obj = RxImageGenerator(
-        data_dir=pill_mask_path,
+        data_dir=input_dir,
         bg_dir=bg_image_path,
         image_size=(min_bg_dim, max_bg_dim),
         num_pills=(min_pills, max_pills),
         num_pills_type=n_pill_types,
+        colors=colors,
+        shapes=shapes,
         scale=scale,
         max_overlap=max_overlap,
         max_attempts=max_attempts,
@@ -272,7 +289,7 @@ def main(
 
     # Generate images and annotations and save them
     Parallel(n_jobs=num_cpu)(
-        delayed(generate_samples)(generator_obj, output_path, mode)
+        delayed(generate_samples)(generator_obj, output_dir, mode)
         for _ in trange(n_images, desc="Generating images")
     )
 

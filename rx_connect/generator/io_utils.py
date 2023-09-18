@@ -4,11 +4,14 @@ from typing import Any, List, Optional, Sequence, Set, Tuple, Union
 
 import albumentations as A
 import numpy as np
-from skimage import io
+import pandas as pd
+from skimage.io import imread
 
 from rx_connect import CACHE_DIR
 from rx_connect.core.types.generator import SEGMENTATION_LABELS, PillMask, PillMaskPaths
 from rx_connect.core.utils.io_utils import get_matching_files_in_dir
+from rx_connect.core.utils.str_utils import convert_to_string_list
+from rx_connect.generator import Colors, Shapes
 from rx_connect.generator.transform import resize_bg
 from rx_connect.tools import is_remote_dir
 from rx_connect.tools.data_tools import (
@@ -34,29 +37,29 @@ def get_unmasked_image_paths(image_folder: Union[str, Path], output_folder: Unio
         List[Path]: List of Paths of the images in the source folder that have not been masked yet.
     """
     # Convert to pathlib.Path objects for easy and consistent path manipulations
-    image_folder, output_folder = Path(image_folder), Path(output_folder)
+    image_dir, output_dir = Path(image_folder), Path(output_folder)
 
     # Create the output folder if it does not exist
-    output_folder.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Gather the names of all images in the source folder
-    source_images: Set[str] = {img_path.name for img_path in image_folder.glob("*.jpg")}
+    source_images: Set[str] = {img_path.name for img_path in image_dir.glob("*.jpg")}
 
     # Gather the names of all images in the output folder (assumed to be masked images)
-    masked_images: Set[str] = {mask_path.name for mask_path in output_folder.glob("*.jpg")}
+    masked_images: Set[str] = {mask_path.name for mask_path in output_dir.glob("*.jpg")}
 
     # Identify images that have not been masked yet by finding the difference
     unmasked_images: Set[str] = source_images.difference(masked_images)
 
     # Convert the names of unmasked images to full path for further processing
-    unmasked_image_paths: List[Path] = [image_folder / img_name for img_name in unmasked_images]
+    unmasked_image_paths: List[Path] = [image_dir / img_name for img_name in unmasked_images]
 
     logger.info(f"Found {len(unmasked_image_paths)} images to mask.")
 
     return unmasked_image_paths
 
 
-def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
+def load_pill_mask_paths(data_dir: Union[str, Path]) -> List[PillMaskPaths]:
     """Load all the pill images and the corresponding masks path.
 
     Args:
@@ -88,9 +91,66 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> PillMaskPaths:
     if len(imgs_path) != len(masks_path):
         raise ValueError(f"Number of images ({len(imgs_path)}) and masks ({len(masks_path)}) do not match.")
 
-    logger.info(f"Found {len(imgs_path)} pill images and masks.")
+    img_mask_paths = [
+        PillMaskPaths(img_path, mask_path) for img_path, mask_path in zip(imgs_path, masks_path)
+    ]
+    logger.info(f"Found {len(img_mask_paths)} pill images and masks in {data_dir}.")
 
-    return PillMaskPaths(imgs_path, masks_path)
+    return img_mask_paths
+
+
+def filter_pill_mask_paths(
+    pill_mask_paths: Sequence[PillMaskPaths],
+    df: Optional[pd.DataFrame] = None,
+    *,
+    colors: Optional[Union[str, Sequence[str], Colors, Sequence[Colors]]] = None,
+    shapes: Optional[Union[str, Sequence[str], Shapes, Sequence[Shapes]]] = None,
+) -> List[PillMaskPaths]:
+    """Filter the pill mask paths based on the color and shape. If both color and shape are None,
+    then no filtering is done.
+
+    Args:
+        pill_mask_paths: The paths to the pill images and masks.
+        df: The dataframe containing the metadata.
+        colors: The color of the pill to keep. If None, then all colors are kept.
+        shapes: The shape of the pill to keep. If None, then all shapes are kept.
+
+    Returns:
+        List[PillMaskPaths]: The paths to the pill images and masks after filtering.
+    """
+    if df is None:
+        if colors is not None or shapes is not None:
+            logger.warning("Metadata dataframe not provided. Skipping filtering.")
+        return list(pill_mask_paths)
+
+    # Convert the colors and shapes to a list of strings
+    colors = convert_to_string_list(colors, Colors)
+    shapes = convert_to_string_list(shapes, Shapes)
+
+    # Create a mask with all True values
+    mask = pd.Series([True] * len(df))
+
+    # Filter the mask based on the color, if provided
+    if colors is not None and len(colors) > 0:
+        mask = mask & (df.Color.isin(colors))
+
+    # Filter the mask based on the shape, if provided
+    if shapes is not None and len(shapes) > 0:
+        mask = mask & (df.Shape.isin(shapes))
+
+    filtered_hashes = set(df[mask].File_Hash)
+    if len(filtered_hashes) == 0:
+        raise ValueError(f"No pills found with color={colors} and shape={shapes}.")
+
+    # Filter pill mask paths using hashes:
+    # - Each pill image in the dataset has a filename with a unique hash.
+    # - This hash ends in either 0 (front side) or 1 (back side).
+    # - We remove these indicators before comparing the hashes.
+    filtered_pill_mask_paths = [
+        paths for paths in pill_mask_paths if paths.img_path.stem.rsplit("_")[0] in filtered_hashes
+    ]
+    logger.info(f"Found {len(filtered_pill_mask_paths)} pills with color={colors} and shape={shapes}.")
+    return filtered_pill_mask_paths
 
 
 def load_comp_mask_paths(data_dir: Union[str, Path]) -> List[Path]:
@@ -141,13 +201,10 @@ def load_image_and_mask(
     mask_path = fetch_from_remote(mask_path, cache_dir=CACHE_DIR / "masks")
 
     # Load the pill image
-    image = io.imread(image_path)
+    image = imread(image_path)
 
     # Load the pill mask
-    assert Path(
-        mask_path
-    ).exists(), f"Could not find mask for image {image_path}. Did you run `mask_generator`?"
-    mask = io.imread(mask_path, as_gray=True)
+    mask = imread(mask_path, as_gray=True)
 
     # Binarize the mask if it is not binary already
     # The new masks contain only 0s and 1s, but the old masks can be anything between 0 and 255
@@ -159,41 +216,42 @@ def load_image_and_mask(
 
 
 def random_sample_pills(
-    images_path: Sequence[Path], masks_path: Sequence[Path], pill_types: int = 1
-) -> PillMaskPaths:
+    image_mask_paths: Sequence[PillMaskPaths], pill_types: int = 1
+) -> List[PillMaskPaths]:
     """Randomly sample `pill_types` pills from the given images and masks.
 
     Args:
-        images_path: The paths to the pill images. Can be local paths or remote paths.
-        masks_path: The paths to the pill masks. Can be local paths or remote paths.
+        image_mask_paths: The sequence of paths to the pill images and masks. Can be local paths or
+            remote paths.
         pill_types: The number of pill types to sample.
 
     Returns:
         pill_mask_paths: The paths to the pill images and masks.
+
+    Raises:
+        ValueError: If `pill_types` is not a positive integer or exceeds the number of available paths.
     """
-    assert pill_types > 0, f"`pill_types` should be a positive integer, but provided {pill_types}."
-    assert len(images_path) == len(masks_path), "`images_path` and `masks_path` have different lengths."
+    if pill_types <= 0:
+        raise ValueError(f"`pill_types` should be a positive integer, but provided {pill_types}.")
 
-    sampled_img_paths: List[Path] = []
-    sampled_mask_paths: List[Path] = []
+    if pill_types > len(image_mask_paths):
+        raise ValueError(
+            f"`pill_types` exceeds the number of available paths. Maximum value should be {len(image_mask_paths)}."
+        )
 
-    # Randomly sample `pill_types` pills
-    for _ in range(pill_types):
-        idx = np.random.randint(len(images_path))
-        sampled_img_paths.append(images_path[idx])
-        sampled_mask_paths.append(masks_path[idx])
+    # Randomly sample `pill_types` pills without replacement
+    sampled_img_mask_paths = random.sample(image_mask_paths, pill_types)
 
-    return PillMaskPaths(sampled_img_paths, sampled_mask_paths)
+    return sampled_img_mask_paths
 
 
 def load_pills_and_masks(
-    images_path: Sequence[Path], masks_path: Sequence[Path], *, thresh: int = 25, color_aug: bool = True
+    image_mask_path: Sequence[PillMaskPaths], *, thresh: int = 25, color_aug: bool = True
 ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """Load all the pill images and the corresponding masks provided in the paths.
 
     Args:
-        images_path: The paths to the pill images. Can be local paths or remote paths.
-        masks_path: The paths to the pill masks. Can be local paths or remote paths.
+        image_mask_path: The paths to the pill images and masks.
         thresh: The threshold at which to binarize the mask.
         color_aug: Whether to apply color augmentations.
 
@@ -201,13 +259,13 @@ def load_pills_and_masks(
         pill_images: The pill images.
         pill_masks: The pill masks.
     """
-    assert len(images_path) > 0, "`images_path` is empty"
-    assert len(images_path) == len(masks_path), "`images_path` and `masks_path` have different lengths."
+    if len(image_mask_path) == 0:
+        raise ValueError("`image_mask_path` is empty")
 
     pill_images: List[np.ndarray] = []
     pill_masks: List[np.ndarray] = []
 
-    for img_path, mask_path in zip(images_path, masks_path):
+    for img_path, mask_path in image_mask_path:
         pill_img, pill_mask = load_image_and_mask(img_path, mask_path, thresh=thresh)
 
         # Apply color augmentations, if `color_aug` is True.
@@ -221,17 +279,12 @@ def load_pills_and_masks(
 
 
 def load_random_pills_and_masks(
-    images_path: Sequence[Path],
-    masks_path: Sequence[Path],
-    *,
-    pill_types: int = 1,
-    thresh: int = 25,
+    image_mask_paths: Sequence[PillMaskPaths], *, pill_types: int = 1, thresh: int = 25
 ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """Load `pill_types` random pills and masks from the given paths.
 
     Args:
-        images_path: The paths to the pill images.
-        masks_path: The paths to the pill masks.
+        image_mask_paths: The paths to the pill images and masks.
         pill_types: The number of pills to sample.
         thresh: The threshold at which to binarize the mask.
 
@@ -244,8 +297,8 @@ def load_random_pills_and_masks(
     # Randomly sample `pill_types` pills
     for _ in range(pill_types):
         # Randomly sample a pill image and mask
-        idx = np.random.randint(len(images_path))
-        image_path, mask_path = images_path[idx], masks_path[idx]
+        idx = np.random.randint(len(image_mask_paths))
+        image_path, mask_path = image_mask_paths[idx]
 
         pill_img, pill_mask = load_image_and_mask(image_path, mask_path, thresh=thresh)
         pill_images.append(pill_img)
@@ -266,7 +319,7 @@ def load_bg_image(path: Path, min_dim: int = 1024, max_dim: int = 1920) -> np.nd
         bg_img: The background image as a numpy array.
     """
     # Load the background image
-    bg_img = io.imread(path)
+    bg_img = imread(path)
 
     # Resize the background image
     bg_img = resize_bg(bg_img, max_dim, min_dim)

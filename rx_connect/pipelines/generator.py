@@ -1,24 +1,30 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 import numpy as np
+import pandas as pd
 
 from rx_connect import SHARED_RXIMAGE_DATA_DIR
 from rx_connect.core.types.generator import PillMaskPaths
+from rx_connect.generator import Colors, Shapes
 from rx_connect.generator.composition import (
     ImageComposition,
     densify_groundtruth,
     generate_image,
 )
 from rx_connect.generator.io_utils import (
+    filter_pill_mask_paths,
     get_background_image,
     load_pill_mask_paths,
     load_pills_and_masks,
     random_sample_pills,
 )
 from rx_connect.generator.transform import apply_augmentations
+from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.timers import timer
+
+logger = setup_logger()
 
 
 @dataclass
@@ -35,8 +41,8 @@ class RxImageGenerator:
     """
 
     data_dir: Union[str, Path] = SHARED_RXIMAGE_DATA_DIR
-    """Directory containing the pill images and masks. It can either be a local directory
-    or remote directory.
+    """Directory containing pill images, masks, and/or csv file containing the metadata. It can either
+    be a local directory or remote directory.
     """
     bg_dir: Optional[Union[str, Path]] = None
     """Directory containing the background images. If None, the background images
@@ -50,6 +56,12 @@ class RxImageGenerator:
     """
     num_pills_type: int = 1
     """Different types of pills to generate
+    """
+    colors: Optional[Union[str, Sequence[str], Colors, Sequence[Colors]]] = None
+    """Pills of a specific colors to generate. If None, then pills of any colors are generated.
+    """
+    shapes: Optional[Union[str, Sequence[str], Shapes, Sequence[Shapes]]] = None
+    """Pills of a specific shapes to generate. If None, then pills of any shapes are generated.
     """
     scale: Union[float, Tuple[float, float]] = (0.3, 0.3)
     """The scaling factor to use for rescaling the pill image and mask. If a tuple is provided,
@@ -95,8 +107,15 @@ class RxImageGenerator:
     _sampled_pills_path: List[Path] = field(init=False, repr=False)
     """Placeholder for the sampled pill images paths
     """
-    _pill_mask_paths: PillMaskPaths = field(init=False, repr=False)
+    _pill_mask_paths: List[PillMaskPaths] = field(init=False, repr=False)
     """Placeholder for the pill images and masks paths
+    """
+    _metadata_df: Optional[pd.DataFrame] = field(default=None, repr=False)
+    """Pandas dataframe containing the metadata. If None, then the metadata is loaded from the
+    `data_dir` directory.
+    """
+    _filtered_pill_mask_paths: Sequence[PillMaskPaths] = field(init=False, repr=False)
+    """Placeholder for the filtered pill images and masks paths based on the color and shape.
     """
     _bg_image: np.ndarray = field(init=False, repr=False)
     """Placeholder for the background image
@@ -109,8 +128,19 @@ class RxImageGenerator:
     """
 
     def __post_init__(self) -> None:
+        self.data_dir = Path(self.data_dir)
+
         # Load the pill images and the associated mask paths.
         self._pill_mask_paths = load_pill_mask_paths(self.data_dir)
+
+        # Filter the pill images and masks based on the color and shape.
+        if (csv_path := self.data_dir / "metadata.csv").exists():
+            self._metadata_df = pd.read_csv(csv_path)
+
+        # Filter the pill images and masks based on the color and shape.
+        self._filtered_pill_mask_paths = filter_pill_mask_paths(
+            self._pill_mask_paths, self._metadata_df, colors=self.colors, shapes=self.shapes
+        )
 
         # Set the background image
         self.config_background(self.bg_dir, self.image_size, color_tint=self.color_tint)
@@ -121,7 +151,7 @@ class RxImageGenerator:
     @property
     def sampled_images_path(self) -> List[Path]:
         """Return the sampled pill images paths."""
-        return self._sampled_pills_path
+        return [image_mask_path.img_path for image_mask_path in self._sampled_img_mask_paths]
 
     @property
     def reference_pills(self) -> List[np.ndarray]:
@@ -138,12 +168,13 @@ class RxImageGenerator:
         image_size: Optional[Tuple[int, int]] = None,
         color_tint: Optional[int] = None,
     ) -> None:
-        """Configure the background image. If no path is given, a random image from the data directory is
-            loaded. If no image size is given, the default image size is used.
+        """Configure the background image. If no path is given, a random colored background is loaded.
+        If a directory is provided, a random image is selected in each call.
+        If no image size is given, the default image size is used.
 
-        This method is useful if you want to generate multiple images with the same background.
-
-        NOTE: If path is provide, it should correspond to a background image and not a directory.
+        Calling this method will reset the background image to the new image. You can also adjust the
+        iamge size and the color tint of the background by passing the `image_size` and `color_tint`
+        during the runtime.
         """
         image_size = image_size or self.image_size
         color_tint = color_tint or self.color_tint
@@ -151,11 +182,11 @@ class RxImageGenerator:
 
     def config_pills(self) -> None:
         """Configure the pill images and masks."""
-        self._sampled_pills_path, sampled_masks_path = random_sample_pills(
-            *self._pill_mask_paths, self.num_pills_type
+        self._sampled_img_mask_paths = random_sample_pills(
+            self._filtered_pill_mask_paths, self.num_pills_type
         )
         self._pill_images, self._pill_masks = load_pills_and_masks(
-            self._sampled_pills_path, sampled_masks_path, thresh=self.thresh, color_aug=True
+            self._sampled_img_mask_paths, thresh=self.thresh, color_aug=True
         )
 
     def __call__(self, new_bg: bool = True, new_pill: bool = True) -> ImageComposition:

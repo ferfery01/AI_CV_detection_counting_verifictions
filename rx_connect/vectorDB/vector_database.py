@@ -37,7 +37,7 @@ class VectorDB:
         """
         self._image_mask_paths = load_pill_mask_paths(self._image_dir)
         pill_images, pill_masks = load_random_pills_and_masks(
-            *self._image_mask_paths, pill_types=self._num_image_samples
+            self._image_mask_paths, pill_types=self._num_image_samples
         )
         self._masked_images = [
             cv2.bitwise_or(image, image, mask=mask) for image, mask in zip(pill_images, pill_masks)

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, NamedTuple
+from typing import NamedTuple
 
 import numpy as np
 
@@ -9,10 +9,10 @@ COCO_LABELS = "COCO"
 
 
 class PillMaskPaths(NamedTuple):
-    """The paths to the pill image and mask."""
+    """The paths to the pill image and its corresponding mask."""
 
-    imgs_path: List[Path]
-    masks_path: List[Path]
+    img_path: Path
+    mask_path: Path
 
 
 class PillMask(NamedTuple):

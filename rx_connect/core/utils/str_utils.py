@@ -1,4 +1,6 @@
 import hashlib
+from enum import Enum
+from typing import List, Optional, Sequence, Type, Union
 
 
 def str_to_float(s: str, salt: bytes = b"") -> float:
@@ -51,3 +53,44 @@ def str_to_hash(s: str, length: int = 20, salt: bytes = b"") -> str:
         return hash[:length]
     else:
         raise ValueError(f"Length param should not exceed SHA1 length, which is {len(hash)}")
+
+
+def convert_to_string_list(
+    input_val: Optional[Union[str, Sequence[str], Enum, Sequence[Enum]]],
+    enum_class: Optional[Type[Enum]] = None,
+) -> Optional[List[str]]:
+    """Convert the provided input value into a standardized list of strings.
+
+    The function handles various input types:
+    - Individual strings or Enum values are wrapped into a list.
+    - Sequences (like lists or tuples) containing strings or Enum values are converted to a list of strings.
+
+    Args:
+        input_val (Optional[Union[str, Sequence[str], Enum, Sequence[Enum]]]): The input value to be converted
+        enum_class (Optional[Type[Enum]]):
+            The expected Enum class if Enum values are provided. This is used for type validation.
+
+    Returns:
+        Optional[List[str]]: The standardized list of strings. If the input is None, the return is also None.
+
+    Raises:
+        ValueError: If the input type is not recognized or doesn't match the expected types.
+    """
+    if input_val is None:
+        return None
+
+    input_list = [input_val] if isinstance(input_val, (str, Enum)) else input_val
+    if isinstance(input_list, Sequence):
+        str_input_list = []
+        for item in input_list:
+            if isinstance(item, str):
+                str_input_list.append(item)
+            elif enum_class is not None and isinstance(item, enum_class):
+                str_input_list.append(item.name)
+            else:
+                raise TypeError(f"Expected input type to be str or {enum_class}, but got {type(item)}.")
+        return str_input_list
+    else:
+        allowed_types = [str, enum_class, list, tuple]
+        allowed_str = ", ".join([str(t) for t in allowed_types])
+        raise ValueError(f"Expected input type to be one of {allowed_str}, but got {type(input_val)}.")

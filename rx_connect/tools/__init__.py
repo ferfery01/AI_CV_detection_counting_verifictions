@@ -17,7 +17,7 @@ def is_remote_dir(dir_path: Union[str, Path]) -> bool:
     """Return True if `dir_path` is a remote directory but the current machine is not a
     GPU server else False.
     """
-    if str(dir_path).startswith(SHARED_REMOTE_DIR) and not is_gpu_server():
+    if Path(dir_path).is_relative_to(SHARED_REMOTE_DIR) and not is_gpu_server():
         return True
     else:
         return False
