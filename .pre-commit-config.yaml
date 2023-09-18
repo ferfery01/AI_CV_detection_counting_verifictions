@@ -1,14 +1,14 @@
 ---
 repos:
     - repo: https://github.com/psf/black
-      rev: 23.3.0
+      rev: 23.9.1
       hooks:
           - id: black
             args:
                 - --config
                 - .black.toml
     - repo: https://github.com/PyCQA/flake8
-      rev: 6.0.0
+      rev: 6.1.0
       hooks:
           - id: flake8
             args:
@@ -26,7 +26,7 @@ repos:
                 - --settings-path
                 - .isort.cfg
     - repo: https://github.com/pre-commit/mirrors-mypy
-      rev: v1.4.1
+      rev: v1.5.1
       hooks:
           - id: mypy
             args:
@@ -45,5 +45,9 @@ repos:
       rev: v4.4.0
       hooks:
           - id: trailing-whitespace
+          - id: requirements-txt-fixer
           - id: end-of-file-fixer
+          - id: debug-statements
+          - id: check-symlinks
+          - id: check-toml
           - id: check-yaml

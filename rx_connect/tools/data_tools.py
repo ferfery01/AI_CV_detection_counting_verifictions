@@ -17,23 +17,23 @@ password-less SSH set up. Steps:
 
 def fetch_from_remote(
     remote_path: Union[str, Path],
-    *,
     server_ip: str = SERVER_IP,
     cache_dir: Union[str, Path] = CACHE_DIR,
-    ignore_exist: bool = False,
     timeout: int = 30,
+    skip_check: bool = False,
+    show_progress: bool = False,
 ) -> Path:
     """Fetch a file/folder from a remote server if this function is executed outside the remote server
     (e.g. on a local machine), otherwise it returns the original path. The file/folder will be cached
-    in the cache_dir. If the file/folder already exists locally, then it will not be fetched
-    unless `ignore_exist` is set to True.
+    in the cache_dir.
 
     Args:
         remote_path (str, Path): Full path or relative path (to home) of the remote file/folder.
         server_ip (str): The remote server IP address. Default to the AI Lab GPU server at 172.23.72.41.
         cache_dir (str, Path): Path to the folder where cached files are stored.
-        ignore_exist (bool): Enforce rsync checking time stamp if file/folder already exists.
         timeout (int): Timeout in seconds for the rsync command.
+        skip_check (bool): Skip the transfer if the file/folder already exists in the cache directory.
+        show_progress (bool): Whether to show the progress bar when fetching the file/folder.
 
     Returns:
         Path: Path to the cached file/folder. If on the remote server, then it returns the original path.
@@ -48,12 +48,13 @@ def fetch_from_remote(
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(exist_ok=True, parents=True)
 
-    # Fetch the file/folder from the remote server, if not in cache or if ignoring existence
     local_path = cache_dir / remote_path.name
-    if not local_path.exists() or ignore_exist:
+    flags = "-azq" if not show_progress else "-avz"
+    skip_check = local_path.exists() and skip_check
+    if not skip_check:
         try:
             result = subprocess.run(
-                ["rsync", "-azq", f"{server_ip}:{remote_path}", local_path], timeout=timeout
+                ["rsync", flags, f"{server_ip}:{remote_path}", local_path], timeout=timeout
             )
         except subprocess.TimeoutExpired as e:
             logger.error(f"Timeout expired when fetching {remote_path} from {server_ip}. Are you on VPN?")

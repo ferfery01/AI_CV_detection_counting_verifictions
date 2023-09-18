@@ -234,8 +234,8 @@ def load_image_and_mask(
         mask: The pill mask as a boolean array.
     """
     # Fetch the image and mask from remote server, if necessary
-    image_path = fetch_from_remote(image_path, cache_dir=CACHE_DIR / "images")
-    mask_path = fetch_from_remote(mask_path, cache_dir=CACHE_DIR / "masks")
+    image_path = fetch_from_remote(image_path, cache_dir=CACHE_DIR / "images", skip_check=True)
+    mask_path = fetch_from_remote(mask_path, cache_dir=CACHE_DIR / "masks", skip_check=True)
 
     # Load the pill image
     image = imread(image_path)
