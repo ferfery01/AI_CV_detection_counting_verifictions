@@ -1,7 +1,8 @@
+import os
 from functools import partial
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import albumentations as A
 import click
@@ -45,7 +46,15 @@ def segment_pills(
     expand_pixels: int,
 ) -> None:
     """Segments the pills in the image and saves the cropped image and mask to the output directory."""
-    image = load_image(image_path)
+    try:
+        image = load_image(image_path)
+    except OSError:
+        logger.error(
+            f"Image {image_path} could not be loaded. It might be corrupted and hence it is being "
+            "deleted. Please download it again using the `scrape_nih_images` script."
+        )
+        os.remove(image_path.resolve())
+        return None
     image = fix_image_orientation(image)
 
     # Pre-process the image based on the layout type
@@ -109,15 +118,16 @@ def segment_pills(
 @click.option(
     "-d",
     "--data-dir",
-    default=f"{ROOT_DIR}/data/Pill_Images",
-    type=click.Path(exists=True),
+    default=ROOT_DIR / "data" / "Pill_Images",
+    type=click.Path(exists=True, path_type=Path),
     help="""Path to the directory containing the pill images and the associated csv file from the
     Computational Photography Project for Pill Identification (C3PI).""",
 )
 @click.option(
     "-o",
     "--output-dir",
-    default=f"{ROOT_DIR}/data/Pill_Images/RxSegment",
+    default=ROOT_DIR / "data" / "Pill_Images" / "RxSegment",
+    type=click.Path(exists=False, path_type=Path),
     help="""Path to the directory to save the segmented images and masks. The images and masks
     will be saved in the following structure:
         ├── MC_C3PI_REFERENCE_SEG_V1.6
@@ -156,8 +166,8 @@ def segment_pills(
 )
 def main(
     image_layout: str,
-    data_dir: Union[str, Path],
-    output_dir: Union[str, Path],
+    data_dir: Path,
+    output_dir: Path,
     expand_pixels: int,
     height: int,
     width: int,
@@ -165,12 +175,11 @@ def main(
     device: str,
 ) -> None:
     layout = Layouts[image_layout]
-    data_dir, output_dir = Path(data_dir), Path(output_dir)
     original_images_dir = data_dir / "images" / layout.name
     output_dir = output_dir / layout.name
 
     # Create image and mask directories
-    image_dir, mask_dir = output_dir / "images", output_dir / "masks"  # type: ignore
+    image_dir, mask_dir = output_dir / "images", output_dir / "masks"
     image_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
 

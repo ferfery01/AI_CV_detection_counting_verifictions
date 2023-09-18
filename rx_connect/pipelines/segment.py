@@ -238,11 +238,17 @@ class RxSemanticSegmentation(RxBase):
         if not _model_path.exists():
             raise FileNotFoundError(f"Model path {_model_path} does not exist.")
 
+        # 1. Initialize the segmentation model
         seg_model = cast(SegmentationModel, getattr(smp, self._seg_model))
         self._model = seg_model(encoder_name=self._arch, encoder_weights=None)
+
+        # 2. Load the saved state dictionary into the model
         model_state_dict = torch.load(_model_path, map_location=self._device)
         self._model.load_state_dict(model_state_dict)
-        self._model.eval()
+
+        # 3. Move the model to the desired device and set it to evaluation mode
+        self._model.to(self._device).eval()
+
         logger.info(f"Loaded {self._seg_model} model from {_model_path} on {self._device}.")
 
     def _preprocess(self, image: np.ndarray) -> torch.Tensor:
@@ -266,7 +272,7 @@ class RxSemanticSegmentation(RxBase):
         image size and then refined using the `refine_mask` function. The refined mask returned is a binary
         mask.
         """
-        mask = TF.resize(mask, size=self.test_image_size)
+        mask = TF.resize(mask, size=list(self.test_image_size))
         mask_np = mask.squeeze().cpu().numpy()
         mask_np = refine_mask(mask_np, **kwargs)
         return mask_np
