@@ -57,7 +57,7 @@ def visualize_masks(
     Displays:
         A matplotlib plot with two subplots: the original image and the mask with overlaid polygons.
     """
-    image, mask = imread(image_path), np.load(mask_path)
+    image, mask = imread(image_path), imread(mask_path)
     height, width = mask.shape
 
     # Load annotations and split into lines
