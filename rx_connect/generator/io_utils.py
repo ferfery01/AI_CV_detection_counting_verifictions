@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-from typing import List, Optional, Sequence, Set, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import albumentations as A
 import numpy as np
@@ -10,8 +10,7 @@ from skimage.io import imread
 from rx_connect import CACHE_DIR
 from rx_connect.core.types.generator import SEGMENTATION_LABELS, PillMask, PillMaskPaths
 from rx_connect.core.utils.io_utils import get_matching_files_in_dir
-from rx_connect.core.utils.str_utils import convert_to_string_list
-from rx_connect.generator import COLORS_LIST, SHAPES_LIST, Colors, Shapes
+from rx_connect.generator.metadata_filter import parse_file_hash
 from rx_connect.generator.transform import BACKGROUND_TRANSFORMS, resize_bg
 from rx_connect.tools import is_remote_dir
 from rx_connect.tools.data_tools import (
@@ -78,7 +77,7 @@ def load_metadata(data_dir: Union[str, Path]) -> Optional[pd.DataFrame]:
 
     try:
         df_path = fetch_from_remote(df_path, cache_dir=CACHE_DIR / data_dir.name)
-        df = pd.read_csv(df_path).set_index("File_Hash")
+        df = pd.read_csv(df_path)
         return df
     except FileNotFoundError:
         logger.warning(f"Metadata file not found at {df_path}. Skipping loading metadata.")
@@ -88,7 +87,37 @@ def load_metadata(data_dir: Union[str, Path]) -> Optional[pd.DataFrame]:
     return None
 
 
-def load_pill_mask_paths(data_dir: Union[str, Path]) -> List[PillMaskPaths]:
+def enrich_metadata_with_paths(
+    metadata_df: Optional[pd.DataFrame], file_hash_to_paths: Dict[str, PillMaskPaths]
+) -> pd.DataFrame:
+    """Enriches the provided metadata DataFrame with image and mask paths based on file hash keys.
+
+    If the metadata DataFrame is not provided, a new DataFrame is created using the
+    file_hash_to_paths dictionary. The function will then map file hashes to their
+    corresponding image and mask paths and return the enriched or newly created DataFrame.
+
+    Args:
+        metadata_df (Optional[pd.DataFrame]): DataFrame containing metadata associated
+            with pill images, indexed by file hash. If not provided, a new DataFrame is
+            created from the file_hash_to_paths dictionary.
+        file_hash_to_paths (Dict[str, PillMaskPaths]): Dictionary mapping file hashes
+            to their respective PillMaskPaths namedtuples.
+
+    Returns:
+        pd.DataFrame: DataFrame with "Image_Path" and "Mask_Path" columns added or updated.
+    """
+    # Convert the dictionary to a DataFrame
+    paths_df = pd.DataFrame.from_dict(file_hash_to_paths, orient="index").reset_index()
+    paths_df.columns = ["File_Hash", "Image_Path", "Mask_Path"]
+
+    # Merge with the provided metadata DataFrame or use the paths DataFrame if metadata is absent
+    merged_df = paths_df if metadata_df is None else paths_df.merge(metadata_df, on="File_Hash", how="left")
+    merged_df = merged_df.set_index("File_Hash")
+
+    return merged_df
+
+
+def load_pill_mask_paths(data_dir: Union[str, Path]) -> Dict[str, PillMaskPaths]:
     """Load all the pill images and the corresponding masks path.
 
     Args:
@@ -120,74 +149,13 @@ def load_pill_mask_paths(data_dir: Union[str, Path]) -> List[PillMaskPaths]:
     if len(imgs_path) != len(masks_path):
         raise ValueError(f"Number of images ({len(imgs_path)}) and masks ({len(masks_path)}) do not match.")
 
-    img_mask_paths = [
-        PillMaskPaths(img_path, mask_path) for img_path, mask_path in zip(imgs_path, masks_path)
-    ]
-    logger.info(f"Found {len(img_mask_paths)} pill images and masks in {data_dir}.")
+    hash_to_img_mask_paths = {
+        parse_file_hash(img_path): PillMaskPaths(img_path, mask_path)
+        for img_path, mask_path in zip(imgs_path, masks_path)
+    }
+    logger.info(f"Found {len(hash_to_img_mask_paths)} pill images and masks in {data_dir}.")
 
-    return img_mask_paths
-
-
-def parse_file_hash(file_path: Union[str, Path]) -> str:
-    """Parse the file hash from the file path.
-
-    Args:
-        file_path: The path to the pill image or mask.
-
-    Returns:
-        str: The file hash.
-    """
-    return Path(file_path).stem.rsplit("_")[0]
-
-
-def filter_pill_mask_paths(
-    pill_mask_paths: Sequence[PillMaskPaths],
-    df: Optional[pd.DataFrame] = None,
-    *,
-    colors: Optional[Union[str, Sequence[str], Colors, Sequence[Colors]]] = None,
-    shapes: Optional[Union[str, Sequence[str], Shapes, Sequence[Shapes]]] = None,
-) -> List[PillMaskPaths]:
-    """Filter the pill mask paths based on the color and shape. If both color and shape are None,
-    then no filtering is done.
-
-    Args:
-        pill_mask_paths: The paths to the pill images and masks.
-        df: The dataframe containing the metadata.
-        colors: The color of the pill to keep. If None, then all colors are kept.
-        shapes: The shape of the pill to keep. If None, then all shapes are kept.
-
-    Returns:
-        List[PillMaskPaths]: The paths to the pill images and masks after filtering.
-    """
-    if df is None:
-        if colors is not None or shapes is not None:
-            logger.warning("Metadata dataframe not provided. Skipping filtering.")
-        return list(pill_mask_paths)
-
-    # Convert the colors and shapes to a list of strings
-    colors = convert_to_string_list(colors, Colors)
-    shapes = convert_to_string_list(shapes, Shapes)
-    colors = COLORS_LIST if (colors is None or len(colors) == 0) else colors
-    shapes = SHAPES_LIST if (shapes is None or len(shapes) == 0) else shapes
-
-    # Filter the dataframe based on the color and shape
-    mask = pd.Series(df.Color.isin(colors) & df.Shape.isin(shapes))
-
-    # Get all the file hashes that match the color and shape
-    # `File_Hash` exists as the Index of the dataframe
-    filtered_hashes = set(df[mask].index)
-    if len(filtered_hashes) == 0:
-        raise ValueError(f"No pills found with color={colors} and shape={shapes}.")
-
-    # Filter pill mask paths using hashes:
-    # - Each pill image in the dataset has a filename with a unique hash.
-    # - This hash ends in either 0 (front side) or 1 (back side).
-    # - We remove these indicators before comparing the hashes.
-    filtered_pill_mask_paths = [
-        paths for paths in pill_mask_paths if parse_file_hash(paths.img_path) in filtered_hashes
-    ]
-    logger.info(f"Found {len(filtered_pill_mask_paths)} pills with:\n color: {colors}\n shape: {shapes}.")
-    return filtered_pill_mask_paths
+    return hash_to_img_mask_paths
 
 
 def load_comp_mask_paths(data_dir: Union[str, Path]) -> List[Path]:
@@ -252,45 +220,14 @@ def load_image_and_mask(
     return PillMask(image=image, mask=mask.astype(bool))
 
 
-def random_sample_pills(
-    image_mask_paths: Sequence[PillMaskPaths], pill_types: int = 1
-) -> List[PillMaskPaths]:
-    """Randomly sample `pill_types` pills from the given images and masks.
-
-    Args:
-        image_mask_paths: The sequence of paths to the pill images and masks. Can be local paths or
-            remote paths.
-        pill_types: The number of pill types to sample.
-
-    Returns:
-        pill_mask_paths: The paths to the pill images and masks.
-
-    Raises:
-        ValueError: If `pill_types` is not a positive integer or exceeds the number of available paths.
-    """
-    if pill_types <= 0:
-        raise ValueError(f"`pill_types` should be a positive integer, but provided {pill_types}.")
-
-    if pill_types > len(image_mask_paths):
-        raise ValueError(
-            f"`pill_types` exceeds the number of available paths. Maximum value should be {len(image_mask_paths)}."
-        )
-
-    # Randomly sample `pill_types` pills without replacement
-    sampled_img_mask_paths = random.sample(image_mask_paths, pill_types)
-
-    return sampled_img_mask_paths
-
-
 def load_pills_and_masks(
-    image_mask_path: Sequence[PillMaskPaths], *, thresh: int = 25, color_aug: bool = True
+    image_mask_path: Sequence[PillMaskPaths], *, thresh: int = 25
 ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """Load all the pill images and the corresponding masks provided in the paths.
 
     Args:
         image_mask_path: The paths to the pill images and masks.
         thresh: The threshold at which to binarize the mask.
-        color_aug: Whether to apply color augmentations.
 
     Returns:
         pill_images: The pill images.
@@ -304,10 +241,6 @@ def load_pills_and_masks(
 
     for img_path, mask_path in image_mask_path:
         pill_img, pill_mask = load_image_and_mask(img_path, mask_path, thresh=thresh)
-
-        # Apply color augmentations, if `color_aug` is True.
-        if color_aug:
-            pill_img = A.RandomBrightnessContrast()(image=pill_img)["image"]
 
         pill_images.append(pill_img)
         pill_masks.append(pill_mask)

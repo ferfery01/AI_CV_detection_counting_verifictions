@@ -1,28 +1,29 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
 import albumentations as A
 import numpy as np
-import pandas as pd
 
 from rx_connect import SHARED_RXIMAGE_DATA_DIR
-from rx_connect.core.types.generator import PillMaskPaths
-from rx_connect.generator import Colors, PillMetadata, Shapes
 from rx_connect.generator.composition import (
     ImageComposition,
     densify_groundtruth,
     generate_image,
 )
 from rx_connect.generator.io_utils import (
-    filter_pill_mask_paths,
+    enrich_metadata_with_paths,
     get_background_image,
     load_metadata,
     load_pill_mask_paths,
     load_pills_and_masks,
-    parse_file_hash,
-    random_sample_pills,
 )
+from rx_connect.generator.metadata import Colors, PillMetadata, Shapes
+from rx_connect.generator.metadata_filter import (
+    filter_by_color_and_shape,
+    parse_file_hash,
+)
+from rx_connect.generator.sampler import sample_from_color_shape_by_ndc
 from rx_connect.generator.transform import COMBINED_TRANSFORMS
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.timers import timer
@@ -35,11 +36,12 @@ class RxImageGenerator:
     """The RxImageGenerator class is used to generate images of pills on a background.
 
     NOTE: The `data_dir` should contain the following structure:
+    ├── metadata.csv
     ├── images
     │     ├── 0001.jpg
     │     ├── ...
     ├── masks
-          ├── 0001.jpg(png)
+          ├── 0001.png
           ├── ...
     """
 
@@ -101,35 +103,6 @@ class RxImageGenerator:
     enable_edge_pills: bool = False
     """Whether to allow pills to be placed at the edge of the image.
     """
-    _bg_dir: Path = field(init=False, repr=False)
-    """Placeholder for the background directory
-    """
-    _image_dir: Path = field(init=False, repr=False)
-    """Placeholder for the pill images and masks directory
-    """
-    _pill_mask_paths: List[PillMaskPaths] = field(init=False, repr=False)
-    """Placeholder for the pill images and masks paths
-    """
-    _metadata: List[PillMetadata] = field(init=False, repr=False)
-    """Placeholder for the metadata for the sampled pills. The order of the metadata is the same as the
-    order of the sampled pills.
-    """
-    _metadata_df: Optional[pd.DataFrame] = field(init=False, repr=False)
-    """Placeholder for the Pandas dataframe containing the metadata with `File_Hash` as the index
-    It is loaded from the `metadata.csv` file stored in the `data_dir` directory, if it exists.
-    """
-    _filtered_pill_mask_paths: Sequence[PillMaskPaths] = field(init=False, repr=False)
-    """Placeholder for the filtered pill images and masks paths based on the color and shape.
-    """
-    _bg_image: np.ndarray = field(init=False, repr=False)
-    """Placeholder for the background image
-    """
-    _pill_images: List[np.ndarray] = field(init=False, repr=False)
-    """Placeholder for the pill images
-    """
-    _pill_masks: List[np.ndarray] = field(init=False, repr=False)
-    """Placeholder for the pill masks
-    """
 
     def __post_init__(self) -> None:
         if self.fraction_pills_type is not None and len(self.fraction_pills_type) != self.num_pills_type:
@@ -138,15 +111,17 @@ class RxImageGenerator:
                 f"{len(self.fraction_pills_type)}. Please provide a fraction for each pill type."
             )
 
+        # Load all the pill images and the associated masks available in the data directory
         self.data_dir = Path(self.data_dir)
+        file_hash_pill_mask_paths = load_pill_mask_paths(self.data_dir)
 
-        # Load the pill images and the associated mask paths.
-        self._pill_mask_paths = load_pill_mask_paths(self.data_dir)
+        # Load the metadata dataframe
+        _metadata_df = load_metadata(self.data_dir)
+        self._metadata_df = enrich_metadata_with_paths(_metadata_df, file_hash_pill_mask_paths)
 
-        # Filter the pill images and masks based on the color and shape.
-        self._metadata_df = load_metadata(self.data_dir)
-        self._filtered_pill_mask_paths = filter_pill_mask_paths(
-            self._pill_mask_paths, self._metadata_df, colors=self.colors, shapes=self.shapes
+        # Filter all the pill images and masks based on the color and shape.
+        self._filtered_metadata_df = filter_by_color_and_shape(
+            self._metadata_df, colors=self.colors, shapes=self.shapes
         )
 
         # Set the background image
@@ -158,7 +133,7 @@ class RxImageGenerator:
     @property
     def sampled_images_path(self) -> List[Path]:
         """Return the sampled pill images paths."""
-        return [image_mask_path.img_path for image_mask_path in self._sampled_img_mask_paths]
+        return [pill_mask_path.image_path for pill_mask_path in self._sampled_pill_mask_paths]
 
     @property
     def reference_pills(self) -> List[np.ndarray]:
@@ -172,34 +147,26 @@ class RxImageGenerator:
     @property
     def metadata(self) -> List[PillMetadata]:
         """Returns the metadata for the sampled reference pills. The order of the metadata is the same as the
-        order of the sampled pills. If no metadata is available, then an empty list is returned.
+        order of the sampled pills. If a particular metadata is not available, then the corresponding
+        field is set to None.
         """
-        return self._metadata
-
-    def _get_metadata(self) -> List[PillMetadata]:
-        """Extract the metadata for the sampled reference pills from the metadata dataframe."""
-        if self._metadata_df is None:
-            return []
-
         metadata_list: List[PillMetadata] = []
         for img_path in self.sampled_images_path:
             file_hash = parse_file_hash(img_path)
             metadata = self._metadata_df.loc[file_hash].to_dict()
             metadata_list.append(
                 PillMetadata(
-                    drug_name=metadata["GenericName"],
-                    ndc=str(metadata["NDC9"]),
-                    color=metadata["Color"],
-                    shape=metadata["Shape"],
-                    imprint=metadata["Imprint"],
+                    drug_name=metadata.get("GenericName"),
+                    ndc=metadata.get("NDC9"),
+                    color=metadata.get("Color"),
+                    shape=metadata.get("Shape"),
+                    imprint=metadata.get("Imprint"),
                 )
             )
         return metadata_list
 
     def config_background(
-        self,
-        path: Optional[Union[str, Path]] = None,
-        image_size: Optional[Tuple[int, int]] = None,
+        self, path: Optional[Union[str, Path]] = None, image_size: Optional[Tuple[int, int]] = None
     ) -> None:
         """Configure the background image. If no path is given, a random colored background is loaded.
         If a directory is provided, a random image is selected in each call.
@@ -213,12 +180,11 @@ class RxImageGenerator:
 
     def config_pills(self) -> None:
         """Configure the pill images and masks."""
-        self._sampled_img_mask_paths = random_sample_pills(
-            self._filtered_pill_mask_paths, self.num_pills_type
+        self._sampled_pill_mask_paths = sample_from_color_shape_by_ndc(
+            self._filtered_metadata_df, pill_types=self.num_pills_type
         )
-        self._metadata = self._get_metadata()
         self._pill_images, self._pill_masks = load_pills_and_masks(
-            self._sampled_img_mask_paths, thresh=self.thresh, color_aug=True
+            self._sampled_pill_mask_paths, thresh=self.thresh
         )
 
     def __call__(self, new_bg: bool = True, new_pill: bool = True) -> ImageComposition:
@@ -240,6 +206,7 @@ class RxImageGenerator:
         if new_pill:
             self.config_pills()
 
+        # Generate the composed image
         img_comp, mask_comp, labels_comp, gt_bbox, pills_per_type = generate_image(
             self._bg_image,
             self._pill_images,

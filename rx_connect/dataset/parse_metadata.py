@@ -13,6 +13,19 @@ from rx_connect.tools.logging import setup_logger
 
 logger = setup_logger()
 
+DROP_COLUMNS: List[str] = [
+    "Part",
+    "Parts",
+    "LabeledBy",
+    "Class",
+    "Size",
+    "AcquisitionDate",
+    "Attribution",
+    "MedicosConsultantsID",
+]
+"""Columns to drop from the metadata DataFrame.
+"""
+
 
 def parse_xml_to_df(file_path: Union[str, Path]) -> pd.DataFrame:
     """Parse the XML file and extract data into a DataFrame."""
@@ -42,18 +55,32 @@ def parse_xml_to_df(file_path: Union[str, Path]) -> pd.DataFrame:
     return df
 
 
+def create_file_hash(row: pd.Series) -> List[str]:
+    """Create a hash of the file name and return a list of hashes for each pill side."""
+    layout = row["Layout"]
+    file_hash = str_to_hash(row["File_Name"])
+    max_pills = layout.max_pills
+    return [f"{file_hash}_{i}" for i in range(max_pills)]
+
+
 def postprocess_df(df: pd.DataFrame) -> pd.DataFrame:
     """Postprocess the DataFrame. This includes merging the Class and Layout columns and converting
     the File_Name column to a hash of the file name."""
+
     # Merge Class and Layout columns into a single column called Layout and convert
     # the values to Layout enum. The Class column is dropped.
     df.Layout = df.Layout.fillna(df.Class)
     df.Layout = df.Layout.apply(lambda x: Layouts.value_to_enum(x))
-    df = df.drop(columns=["Class"])
 
-    # Convert the File_Name column to a hash of the file name
-    # The pills parsed from these images are saved using the hash as the file name
-    df["File_Hash"] = df.File_Name.apply(lambda x: str_to_hash(x))
+    # Filter all the C3PI_Test Layouts
+    df = df[df.Layout != Layouts.C3PI_Test]
+
+    # Drop all the columns that are not needed
+    df = df.drop(columns=DROP_COLUMNS)
+
+    # Create a hash of the file name and explode the DataFrame to create a row for each pill sides
+    df["File_Hash"] = df.apply(create_file_hash, axis=1)
+    df = df.explode("File_Hash")
 
     # Clean up the Shape column by stripping off anything in parantheses and replacing spaces and
     # dashes with underscores
@@ -62,6 +89,7 @@ def postprocess_df(df: pd.DataFrame) -> pd.DataFrame:
 
     # Filter out all the duplicate rows
     df = df.drop_duplicates()
+
     return df
 
 

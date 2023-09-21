@@ -11,7 +11,7 @@ COCO_LABELS = "COCO"
 class PillMaskPaths(NamedTuple):
     """The paths to the pill image and its corresponding mask."""
 
-    img_path: Path
+    image_path: Path
     mask_path: Path
 
 

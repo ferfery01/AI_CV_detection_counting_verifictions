@@ -11,8 +11,8 @@ from tqdm import trange
 
 from rx_connect import ROOT_DIR, SHARED_RXIMAGE_DATA_DIR
 from rx_connect.core.types.generator import SEGMENTATION_LABELS, YOLO_LABELS
-from rx_connect.generator import COLORS_LIST, SHAPES_LIST
 from rx_connect.generator.annotations import create_yolo_annotations
+from rx_connect.generator.metadata import COLORS_LIST, SHAPES_LIST
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.tools.logging import setup_logger
 
@@ -178,7 +178,7 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
 @click.option(
     "-mo",
     "--max-overlap",
-    default=0.2,
+    default=0.1,
     show_default=True,
     help="Maximum overlap between pills",
 )
