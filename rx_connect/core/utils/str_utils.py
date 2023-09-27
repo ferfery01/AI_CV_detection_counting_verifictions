@@ -1,6 +1,6 @@
 import hashlib
 from enum import Enum
-from typing import List, Optional, Sequence, Type, Union
+from typing import List, Optional, Sequence, Type, Union, overload
 
 
 def str_to_float(s: str, salt: bytes = b"") -> float:
@@ -94,3 +94,42 @@ def convert_to_string_list(
         allowed_types = [str, enum_class, list, tuple]
         allowed_str = ", ".join([str(t) for t in allowed_types])
         raise ValueError(f"Expected input type to be one of {allowed_str}, but got {type(input_val)}.")
+
+
+@overload
+def process_and_verify_string(input_str: str, allowed_values: Sequence[str]) -> List[str]:
+    ...
+
+
+@overload
+def process_and_verify_string(input_str: None, allowed_values: Sequence[str]) -> None:
+    ...
+
+
+def process_and_verify_string(input_str: Optional[str], allowed_values: Sequence[str]) -> Optional[List[str]]:
+    """Process a string by converting it to uppercase, removing whitespaces, and splitting by comma.
+    Then verify if all elements in the resulting list are in allowed_values.
+
+    Args:
+        input_str: The input string to be processed.
+        allowed_values: A sequence of allowed values.
+
+    Returns:
+        A list containing the processed and verified string elements. If the input_str is None,
+        then None is returned.
+    """
+    if input_str is None:
+        return None
+
+    # Convert to uppercase and strip whitespaces
+    processed_str = input_str.upper().replace(" ", "")
+
+    # Split by comma
+    elements = processed_str.split(",")
+
+    # Verify each element
+    for elem in elements:
+        if elem not in set(allowed_values):
+            raise ValueError(f"Element `{elem}` is not in the allowed values.")
+
+    return elements

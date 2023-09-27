@@ -9,6 +9,7 @@ from rx_connect.generator.object_overlay import (
     is_pill_within_background,
     overlay_image_onto_background,
 )
+from rx_connect.generator.sampler import sample_pill_location
 from rx_connect.generator.transform import rescale_pill_and_mask, transform_pill
 from rx_connect.tools.logging import setup_logger
 
@@ -88,30 +89,6 @@ def partition_by_fraction(number: int, fractions: Sequence[float]) -> List[int]:
     parts[-1] += number - sum(parts)
 
     return parts
-
-
-def sample_pill_location(pill_size: Tuple[int, int], bg_size: Tuple[int, int]) -> Tuple[int, int]:
-    """Sample the top left corner of the pill to be placed on the background image.
-
-    The position is sampled from a normal distribution with mean at the center of the background image.
-    The standard deviation is a quarter of the background image's width and height.
-    """
-    # Get the height and width of the pill and background image.
-    h_bg, w_bg = bg_size
-    h_pill, w_pill = pill_size
-
-    # Get the effective height and width where the pill can be placed.
-    H_eff, W_eff = h_bg - h_pill, w_bg - w_pill
-
-    # Sample the center of the pill from a normal distribution.
-    x, y = np.random.normal(
-        loc=(W_eff / 2, H_eff / 2), scale=(abs(W_eff / 4), abs(H_eff / 4)), size=(2,)
-    ).astype(int)
-
-    # Clip the location to ensure that the pill is within the background image.
-    top_left = np.clip(x, -w_pill, w_bg), np.clip(y, -h_pill, h_bg)
-
-    return top_left
 
 
 def densify_groundtruth(

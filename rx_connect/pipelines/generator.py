@@ -23,7 +23,10 @@ from rx_connect.generator.metadata_filter import (
     filter_by_color_and_shape,
     parse_file_hash,
 )
-from rx_connect.generator.sampler import sample_from_color_shape_by_ndc
+from rx_connect.generator.sampler import (
+    SAMPLING_METHODS_MAP,
+    sample_from_color_shape_by_ndc,
+)
 from rx_connect.generator.transform import COMBINED_TRANSFORMS
 from rx_connect.tools.logging import setup_logger
 from rx_connect.tools.timers import timer
@@ -73,6 +76,10 @@ class RxImageGenerator:
     shapes: Optional[Union[str, Sequence[str], Shapes, Sequence[Shapes]]] = None
     """Pills of a specific shapes to generate. If None, then pills of any shapes are generated.
     """
+    sampling_type: str = "uniform"
+    """Sampling method to use for sampling the pill images. The available methods are: uniform,
+    random, and hard.
+    """
     scale: Union[float, Tuple[float, float]] = (0.3, 0.3)
     """The scaling factor to use for rescaling the pill image and mask. If a tuple is provided,
     then the scaling factor is randomly sampled from the range (min, max). If a float is
@@ -105,11 +112,8 @@ class RxImageGenerator:
     """
 
     def __post_init__(self) -> None:
-        if self.fraction_pills_type is not None and len(self.fraction_pills_type) != self.num_pills_type:
-            raise ValueError(
-                f"Length of `fraction_pills_type` should be {self.num_pills_type}, but got "
-                f"{len(self.fraction_pills_type)}. Please provide a fraction for each pill type."
-            )
+        # Validate the arguments
+        self._validate_args()
 
         # Load all the pill images and the associated masks available in the data directory
         self.data_dir = Path(self.data_dir)
@@ -129,6 +133,32 @@ class RxImageGenerator:
 
         # Load the pill images and masks
         self.config_pills()
+
+    def _validate_args(self):
+        if self.num_pills_type < 1:
+            raise ValueError(
+                f"`num_pills_type` should be a positive integer, but provided {self.num_pills_type}."
+            )
+
+        if self.fraction_pills_type is not None and len(self.fraction_pills_type) != self.num_pills_type:
+            raise ValueError(
+                f"Length of `fraction_pills_type` should be {self.num_pills_type}, but got "
+                f"{len(self.fraction_pills_type)}. Please provide a fraction for each pill type."
+            )
+
+        if self.sampling_type not in SAMPLING_METHODS_MAP:
+            raise ValueError(
+                f"`sampling_type` should be one of {list(SAMPLING_METHODS_MAP.keys())}, but "
+                f"provided {self.sampling_type}."
+            )
+
+        if self.max_overlap < 0 or self.max_overlap > 1:
+            raise ValueError(f"`max_overlap` should be between 0 and 1, but provided {self.max_overlap}.")
+
+        if self.max_attempts <= 0:
+            raise ValueError(
+                f"`max_attempts` should be a positive integer, but provided {self.max_attempts}."
+            )
 
     @property
     def sampled_images_path(self) -> List[Path]:
@@ -181,7 +211,7 @@ class RxImageGenerator:
     def config_pills(self) -> None:
         """Configure the pill images and masks."""
         self._sampled_pill_mask_paths = sample_from_color_shape_by_ndc(
-            self._filtered_metadata_df, pill_types=self.num_pills_type
+            self._filtered_metadata_df, pill_types=self.num_pills_type, sampling=self.sampling_type
         )
         self._pill_images, self._pill_masks = load_pills_and_masks(
             self._sampled_pill_mask_paths, thresh=self.thresh

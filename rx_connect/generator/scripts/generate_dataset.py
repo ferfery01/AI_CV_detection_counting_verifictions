@@ -11,6 +11,7 @@ from tqdm import trange
 
 from rx_connect import ROOT_DIR, SHARED_RXIMAGE_DATA_DIR
 from rx_connect.core.types.generator import SEGMENTATION_LABELS, YOLO_LABELS
+from rx_connect.core.utils.str_utils import process_and_verify_string
 from rx_connect.generator.annotations import create_yolo_annotations
 from rx_connect.generator.metadata import COLORS_LIST, SHAPES_LIST
 from rx_connect.pipelines.generator import RxImageGenerator
@@ -108,7 +109,7 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
 @click.option(
     "-m",
     "--mode",
-    default="detection",
+    default="both",
     type=click.Choice(["detection", "segmentation", "both"]),
     show_default=True,
     help="Flag to indicate whether to generate detection, segmentation, or both types of annotations.",
@@ -138,16 +139,25 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
 @click.option(
     "-c",
     "--colors",
-    multiple=True,
-    type=click.Choice(COLORS_LIST, case_sensitive=True),
-    help="Specify the color of the pills to use for generating the images.",
+    help="""Specify the colors of the pills to use for generating the images. Use comma-separated values.
+    If omitted, all colors are used.""",
 )
 @click.option(
     "-s",
     "--shapes",
-    multiple=True,
-    type=click.Choice(SHAPES_LIST, case_sensitive=True),
-    help="Specify the shape of the pills to use for generating the images.",
+    help="""Specify the shape of the pills to use for generating the images. Use comma-separated values.
+    If omitted, all shapes are used.""",
+)
+@click.option(
+    "-ss",
+    "--sampler",
+    default="uniform",
+    type=click.Choice(["uniform", "random", "hard"]),
+    show_default=True,
+    help="""Sampling method to use for selecting pill types. "uniform" assigns equal weightage to any
+    color-shape combination. "random" assigns more weightage to color-shape combinations with more
+    samples. "hard" assigns more weightage to color-shape combinations with fewer samples.
+    """,
 )
 @click.option(
     "-sc",
@@ -246,8 +256,9 @@ def main(
     n_images: int,
     n_pill_types: int,
     pill_fractions: Tuple[float, ...],
-    colors: Tuple[str, ...],
-    shapes: Tuple[str, ...],
+    colors: Optional[str],
+    shapes: Optional[str],
+    sampler: str,
     scale: Tuple[float, float],
     min_pills: int,
     max_pills: int,
@@ -272,8 +283,9 @@ def main(
         num_pills=(min_pills, max_pills),
         num_pills_type=n_pill_types,
         fraction_pills_type=pill_fractions if len(pill_fractions) > 0 else None,
-        colors=colors,
-        shapes=shapes,
+        colors=process_and_verify_string(colors, COLORS_LIST),
+        shapes=process_and_verify_string(shapes, SHAPES_LIST),
+        sampling_type=sampler,
         scale=scale,
         max_overlap=max_overlap,
         max_attempts=max_attempts,
