@@ -39,7 +39,7 @@ class ContinuousLearningDataset(Dataset):
     def __init__(
         self, num_samples: int = 1000, new_sample_rate: float = 0.0, generate_masked_queries: bool = False
     ):
-        self.generator = RxImageGenerator(num_pills_type=2, num_pills=(20, 20), apply_noise=False)
+        self.generator = RxImageGenerator(num_pills_type=2, num_pills=(20, 20), apply_composed_aug=False)
         self.new_sample_rate = new_sample_rate
         self.samples: List[dict | None] = [None] * num_samples
         self.generate_masked_queries = generate_masked_queries

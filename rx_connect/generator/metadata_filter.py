@@ -38,13 +38,12 @@ def filter_by_color_and_shape(
     Returns:
         pd.DataFrame: The filtered dataframe.
     """
-    if ("Color" not in df.columns or "Shape" not in df.columns) and (
-        colors is not None or shapes is not None
-    ):
-        logger.warning(
-            "The metadata dataframe does not contain the 'Color' and 'Shape' columns. "
-            "Skipping the color and shape filtering."
-        )
+    if "Color" not in df.columns or "Shape" not in df.columns:
+        if colors is not None or shapes is not None:
+            logger.warning(
+                "The metadata dataframe does not contain the 'Color' and 'Shape' columns. "
+                "Skipping the color and shape filtering."
+            )
         return df
 
     # Convert the colors and shapes to a list of strings
