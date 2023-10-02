@@ -31,12 +31,17 @@ def calculate_md5(fpath: Union[str, Path], chunk_size: int = 1024 * 1024) -> Opt
         The MD5 hash of the file, as a 32-character hex string. None if the file does not exist
         or an error occurred while reading the file.
     """
+    fpath = Path(fpath)
     md5_hash = hashlib.md5(usedforsecurity=False)
+    total_size = fpath.stat().st_size
+
     try:
         with open(fpath, "rb") as f:
-            for chunk in iter(lambda: f.read(chunk_size), b""):
-                md5_hash.update(chunk)
-            return md5_hash.hexdigest()
+            with tqdm(total=total_size, unit="B", unit_scale=True, desc=fpath.name) as pbar:
+                for chunk in iter(lambda: f.read(chunk_size), b""):
+                    md5_hash.update(chunk)
+                    pbar.update(len(chunk))
+        return md5_hash.hexdigest()
     except FileNotFoundError:
         logger.error(f"File not found: {fpath}")
         return None

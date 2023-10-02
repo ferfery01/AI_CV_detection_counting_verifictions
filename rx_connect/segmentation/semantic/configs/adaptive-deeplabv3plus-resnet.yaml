@@ -16,8 +16,8 @@ checkpoint_storage:
     type: shared_fs
 
 data:
-    url: https://drive.google.com/file/d/1sVXW1UirpDvzMANyV9M4zaIqaia2X-Mo/view?usp=sharing
-    md5: c931b863f1aec03030831562a2d44547
+    url: https://drive.google.com/file/d/1wSYUemDsk0CrE49ST_I2zsHca83uLgjr/view?usp=sharing
+    md5: 910d97ce43688f5b75d9ab6ca6408d9e
     download_dir: /mnt/share/RxConnect
     force_download: false
     filename: RxImage_Segment.zip
@@ -26,19 +26,18 @@ data:
         - 720
         - 1280
 
+environment:
+    image:
+        gpu: determinedai/environments:cuda-11.8-pytorch-2.0-gpu-mpi-0.24.0
+
 hyperparameters:
-    encoder: resnet34
+    smp_config:
+        model: DeepLabV3+
+        encoder: resnext50_32x4d
+        encoder_weights: swsl
+
     global_batch_size: 32
     patience: 5
-    initial_lr:
-        type: categorical
-        vals:
-            - 5e-5
-            - 1e-4
-            - 5e-4
-            - 2e-4
-            - 1e-3
-            - 2e-3
     lr_config:
         lr_T_max: 10
         lr_eta_min:
@@ -67,15 +66,7 @@ hyperparameters:
 
     # Loss Coefficients
     loss:
-        lovasz_loss:
-            coef:
-                type: categorical
-                vals:
-                    - 0.1
-                    - 0.25
-                    - 0.5
-            per_image: false
-        focal_loss:
+        focal_tversky_loss:
             coef:
                 type: categorical
                 vals:
@@ -83,19 +74,35 @@ hyperparameters:
                     - 1.0
                     - 1.25
                     - 1.5
-            alpha:
+            alpha: # Higher alpha -> More weight to false negatives (0, 1)
                 type: categorical
                 vals:
+                    - 0.25
+                    - 0.35
+                    - 0.5
+                    - 0.75
+            beta: # Higher beta -> More weight to false positives (0, 1)
+                type: categorical
+                vals:
+                    - 0.25
                     - 0.5
                     - 0.75
                     - 1.0
-            gamma:
+            gamma: # Higher gamma -> More weight to hard examples (0, inf)
                 type: categorical
                 vals:
+                    - 0
+                    - 1
                     - 2
-                    - 3
-                    - 4
                     - 5
+        ms_ssim_loss:
+            coef:
+                type: categorical
+                vals:
+                    - 0.5
+                    - 1.0
+                    - 1.25
+                    - 1.5
 
 profiling:
     begin_on_batch: 0

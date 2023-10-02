@@ -65,7 +65,7 @@ def segment_pills(
         image = image[:-130, :]
     elif layout in (Layouts.MC_COOKED_CALIBRATED_V1_2, Layouts.C3PI_Reference):
         # Crop the borders from the image
-        image = A.CenterCrop(height=2400, width=3200)(image=image)["image"]
+        image = A.CenterCrop(height=2200, width=3100)(image=image)["image"]
 
     # Since MC_C3PI_REFERENCE_SEG_V1_6 layout is already segmented, we directly generate the mask.
     # For other layouts, we use the semantic segmentation model to generate the mask.

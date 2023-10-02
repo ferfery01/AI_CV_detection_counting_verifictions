@@ -22,7 +22,7 @@ class SegmentTransform(BasicAugTransform):
         >> image_transformed, mask_transformed = segment_transform(image, mask)
     """
 
-    image_size: Tuple[int, int] = (405, 720)
+    image_size: Tuple[int, int] = (720, 1280)
     """The target image size to resize to. Format: (height, width)
     """
     pad_divisor: int = 16
@@ -38,6 +38,13 @@ class SegmentTransform(BasicAugTransform):
         self.spatial_tfm = self.init_spatial_transform()
         self.color_tfm = self.init_color_transform()
         self.resize_tfm = A.Resize(self.height, self.width, always_apply=True)
+        self.pad_tfm = A.PadIfNeeded(
+            min_height=None,
+            min_width=None,
+            pad_height_divisor=self.pad_divisor,
+            pad_width_divisor=self.pad_divisor,
+            always_apply=True,
+        )
         """The final resize transform to apply to both images and masks.
         """
 
@@ -48,30 +55,16 @@ class SegmentTransform(BasicAugTransform):
         """Define the spatial transforms for augmentation."""
         spatial_tfms = A.Compose(
             [
-                A.Resize(self.height, self.width, always_apply=True),
-                A.RandomSizedCrop(
-                    min_max_height=(int(0.8 * self.height), self.height),
-                    height=self.height,
-                    width=self.width,
-                    w2h_ratio=self.width / self.height,
-                    p=0.5,
-                ),
-                A.PadIfNeeded(
-                    min_height=None,
-                    min_width=None,
-                    pad_height_divisor=self.pad_divisor,
-                    pad_width_divisor=self.pad_divisor,
-                    always_apply=True,
-                ),
                 A.OneOf([A.HorizontalFlip(p=0.5), A.VerticalFlip(p=0.5)], p=0.5),
                 A.OneOf(
                     [
-                        A.ElasticTransform(alpha=10, sigma=50, alpha_affine=50, p=0.5),
                         A.GridDistortion(distort_limit=0.2, p=0.5),
                         A.OpticalDistortion(distort_limit=0.05, shift_limit=0.05, p=0.5),
                     ],
                     p=0.5,
                 ),
+                A.RandomResizedCrop(height=self.height, width=self.width, scale=(0.8, 1.0), p=0.5),
+                A.Resize(height=self.height, width=self.width, always_apply=True),
             ]
         )
         return spatial_tfms
@@ -94,9 +87,9 @@ class SegmentTransform(BasicAugTransform):
     def finetune_transform(self) -> A.Compose:
         """Combine all the transforms together."""
         return A.Compose(
-            [self.spatial_tfm, self.color_tfm, self.resize_tfm, self.final_tfms]
+            [self.spatial_tfm, self.color_tfm, self.pad_tfm, self.final_tfms]
             if self.train
-            else [self.resize_tfm, self.final_tfms]
+            else [self.resize_tfm, self.pad_tfm, self.final_tfms]
         )
 
     @overload

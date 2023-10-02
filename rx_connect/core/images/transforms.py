@@ -102,7 +102,7 @@ def resize_and_center(
     new_height, new_width = int(original_height * scale), int(original_width * scale)
 
     # Resize the image with the new dimensions
-    resized_image = TF.resize(image, (new_height, new_width), interpolation=interpolation)
+    resized_image = TF.resize(image, (new_height, new_width), interpolation=interpolation, antialias=True)
 
     # Calculate padding and cropping to center the image
     pad_top = max((target_height - new_height) // 2, 0)

@@ -1,0 +1,8 @@
+---
+semantic_segmentation:
+    model: Linknet
+    arch: timm-resnest50d
+    model_path: /media/RxConnectShared/checkpoints/segmentation/semantics/${.model}/best_linknet-${.arch}.pt
+    image_size:
+        - 1080
+        - 1920

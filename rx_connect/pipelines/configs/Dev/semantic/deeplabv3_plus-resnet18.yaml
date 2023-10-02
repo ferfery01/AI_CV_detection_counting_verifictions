@@ -1,8 +1,0 @@
----
-semantic_segmentation:
-    model: DeepLabV3Plus
-    arch: resnet18
-    model_path: /media/RxConnectShared/checkpoints/segmentation/semantics/deeplab/best_resnet18.pt
-    image_size:
-        - 720
-        - 1280

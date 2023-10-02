@@ -7,7 +7,10 @@ from skimage.io import imread
 from torch.utils.data import Dataset
 
 from rx_connect.core.images.types import img_to_tensor
-from rx_connect.core.utils.io_utils import get_matching_files_in_dir
+from rx_connect.core.utils.io_utils import (
+    filter_matching_pairs,
+    get_matching_files_in_dir,
+)
 from rx_connect.segmentation.semantic.augments import SegmentTransform
 
 
@@ -86,17 +89,19 @@ class SegDataset(Dataset):
         self.transforms = transforms
 
         # Variables containing list of all input image and ground truth mask paths
-        self.image_paths = get_matching_files_in_dir(
+        image_paths = get_matching_files_in_dir(
             dir_path=self.root_dir / self.SUBDIR_SPLIT[self.data_split] / self.SUBDIR_IMAGES,
             wildcard_patterns="*.jpg",
         )
-        self.mask_paths = get_matching_files_in_dir(
+        mask_paths = get_matching_files_in_dir(
             dir_path=self.root_dir / self.SUBDIR_SPLIT[self.data_split] / self.SUBDIR_MASKS,
             wildcard_patterns="*.png",
         )
-        assert len(self.image_paths) == len(
-            self.mask_paths
-        ), f"Number of images ({len(self.image_paths)}) and masks ({len(self.mask_paths)}) must be equal"
+        self.image_paths, self.mask_paths = filter_matching_pairs(image_paths, mask_paths)
+        if len(self.image_paths) == 0:
+            raise FileNotFoundError(
+                f"No aligned image-mask pairs found in {self.root_dir / self.SUBDIR_SPLIT[self.data_split]}"
+            )
 
     def __len__(self) -> int:
         return len(self.image_paths)
@@ -117,8 +122,8 @@ class SegDataset(Dataset):
             image_tensor, mask_tensor = img_to_tensor(image), img_to_tensor(mask)
 
         return {
-            "image": image_tensor,  # (3, H, W)
-            "mask": mask_tensor,  # (1, H, W)
+            "image": image_tensor.float(),  # (3, H, W)
+            "mask": mask_tensor.float().unsqueeze(0),  # (1, H, W)
         }
 
     def __repr__(self) -> str:

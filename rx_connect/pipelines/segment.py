@@ -183,7 +183,7 @@ class RxSegmentation(RxBase):
 class RxSemanticSegmentation(RxBase):
     def __init__(
         self,
-        cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/semantic/deeplabv3_plus-resnet50.yaml",
+        cfg: Union[str, Path] = f"{PIPELINES_DIR}/configs/Dev/semantic/linknet-resnet50d.yaml",
         device: Union[str, torch.device] = "cpu",
     ) -> None:
         super().__init__(cfg, device)
@@ -272,7 +272,7 @@ class RxSemanticSegmentation(RxBase):
         image size and then refined using the `refine_mask` function. The refined mask returned is a binary
         mask.
         """
-        mask = TF.resize(mask, size=list(self.test_image_size))
+        mask = TF.resize(mask, size=list(self.test_image_size), antialias=True)
         mask_np = mask.squeeze().cpu().numpy()
         mask_np = refine_mask(mask_np, **kwargs)
         return mask_np

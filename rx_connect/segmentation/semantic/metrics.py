@@ -13,15 +13,18 @@ class SegmentMetricReducer(MetricReducer):
     def reset(self) -> None:
         self.results: Dict[str, List[torch.Tensor]] = {key: [] for key in ("tp", "fp", "fn", "tn")}
 
-    def update(self, pred_mask: torch.Tensor, gt_mask: torch.Tensor) -> None:
+    def update(self, logit_mask: torch.Tensor, gt_mask: torch.Tensor) -> None:
         """Update the metric with the given predictions and ground truth. This method is called
         once for each batch.
         """
+        # Binarize the predicted mask
+        binarize_mask = (logit_mask > 0.5).long()
+
         # We will compute IoU metric by two ways: dataset-wise and image-wise
         # For now we just compute true positive, false positive, false negative and
         # true negative 'pixels' for each image and class.
         # these values will be aggregated in the end of an epoch.
-        tp, fp, fn, tn = smp.metrics.get_stats(pred_mask.long(), gt_mask.long(), mode="binary", threshold=0.5)
+        tp, fp, fn, tn = smp.metrics.get_stats(binarize_mask, gt_mask, mode="binary", threshold=0.5)
 
         # Save step outputs
         self.results["tp"].append(tp)

@@ -1,10 +1,13 @@
 ---
-name: semantic_seg_const
-description: Train DeepLabV3+ on RxImage dataset
+name: DeepLabV3+ ResNest50d - Full HD - Hybrid Loss
+description: Train DeepLabV3+ on RxImage_Segment dataset
 labels:
-    - Semantic_Segmentation
+    - DeepLabV3+
+    - ResNest50d
+    - Full HD
+    - Hybrid Loss
 max_restarts: 0
-records_per_epoch: 20000
+records_per_epoch: 52000
 scheduling_unit: 100
 min_validation_period:
     epochs: 1
@@ -15,21 +18,28 @@ checkpoint_storage:
     type: shared_fs
 
 data:
-    url: https://drive.google.com/file/d/1sVXW1UirpDvzMANyV9M4zaIqaia2X-Mo/view?usp=sharing
-    md5: c931b863f1aec03030831562a2d44547
+    url: https://drive.google.com/file/d/1wSYUemDsk0CrE49ST_I2zsHca83uLgjr/view?usp=sharing
+    md5: 910d97ce43688f5b75d9ab6ca6408d9e
     download_dir: /mnt/share/RxConnect
     force_download: false
     filename: RxImage_Segment.zip
     num_workers: 6
     image_size:
-        - 720
-        - 1280
+        - 1080
+        - 1920
+
+environment:
+    image:
+        gpu: determinedai/environments:cuda-11.8-pytorch-2.0-gpu-mpi-0.24.0
 
 hyperparameters:
-    encoder: resnet18
-    global_batch_size: 64
+    smp_config:
+        model: DeepLabV3+
+        encoder: timm-resnest50d
+        encoder_weights: swsl
+
+    global_batch_size: 48
     patience: 10
-    initial_lr: 1e-4
     lr_config:
         lr_T_max: 10
         lr_eta_min: 1e-6
@@ -41,13 +51,13 @@ hyperparameters:
 
     # Loss Coefficients
     loss:
-        lovasz_loss:
-            coef: 0.25
-            per_image: false
-        focal_loss:
-            coef: 1.5
-            alpha: 0.75
-            gamma: 5
+        focal_tversky_loss:
+            coef: 1.0
+            alpha: 0.35 # Higher alpha -> More weight to false negatives (0, 1)
+            beta: 0.75 # Higher beta -> More weight to false positives (0, 1)
+            gamma: 2 # Higher gamma -> More weight to hard examples (0, inf)
+        ms_ssim_loss:
+            coef: 1.0
 
 profiling:
     begin_on_batch: 0
@@ -68,4 +78,5 @@ workspace: workspace2
 project: Semantic_Segmentation
 resources:
     resource_pool: workspace2
-    slots_per_trial: 1
+    slots_per_trial: 8
+    shm_size: 17179869184

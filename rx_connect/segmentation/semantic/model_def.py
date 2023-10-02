@@ -1,7 +1,7 @@
 from functools import partial
 from math import ceil
 from pathlib import Path
-from typing import Dict, cast
+from typing import Dict, Mapping, NamedTuple, cast
 
 import segmentation_models_pytorch as smp
 import torch
@@ -15,6 +15,8 @@ from determined.pytorch import (
     TorchData,
 )
 from omegaconf import OmegaConf
+from pytorch_msssim import MS_SSIM
+from segmentation_models_pytorch.base import SegmentationModel
 
 from rx_connect.core.callbacks import EarlyStopping, TQDMProgressBar
 from rx_connect.core.trainer.utils import clip_grads_fn
@@ -22,6 +24,7 @@ from rx_connect.core.utils.download_utils import download_and_extract_archive
 from rx_connect.core.utils.func_utils import to_tuple
 from rx_connect.segmentation.semantic.augments import SegmentTransform
 from rx_connect.segmentation.semantic.datasets import DatasetSplit, SegDataset
+from rx_connect.segmentation.semantic.losses import FocalTverskyLoss
 from rx_connect.segmentation.semantic.metrics import SegmentMetricReducer
 from rx_connect.tools.logging import setup_logger
 
@@ -30,6 +33,23 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 """
 
 logger = setup_logger()
+
+
+class SmpConfig(NamedTuple):
+    module: SegmentationModel
+    pad_divisor: int
+
+
+SEG_MODELS_CFG: Mapping[str, SmpConfig] = {
+    "DeepLabV3": SmpConfig(smp.DeepLabV3, 8),
+    "DeepLabV3+": SmpConfig(smp.DeepLabV3Plus, 16),
+    "LinkNet": SmpConfig(smp.Linknet, 32),
+    "Unet": SmpConfig(smp.Unet, 32),
+    "Unet++": SmpConfig(smp.UnetPlusPlus, 32),
+}
+"""A mapping of segmentation model names to their corresponding SegmentationModel class
+and pad_divisor.
+"""
 
 
 class SegTrial(PyTorchTrial):
@@ -44,10 +64,12 @@ class SegTrial(PyTorchTrial):
         self.download_dir = self.data_cfg.download_dir
         self.image_size = to_tuple(self.data_cfg.image_size)
 
+        # Scale the batch size based on the global batch size
+        self.global_batch_size = self.context.get_global_batch_size()
+        self.initial_lr = 1e-4 * self.global_batch_size / 64
+
         # Initialize the model and optimizer
-        self.model = self.context.wrap_model(
-            smp.DeepLabV3Plus(encoder_name=self.hparams.encoder, encoder_weights="imagenet", classes=1)
-        )
+        self.model = self.context.wrap_model(self.configure_model())
         self.optimizer = self.context.wrap_optimizer(self.configure_optimizers())
         self.clip_grads = partial(clip_grads_fn, max_norm=self.hparams.optimizer_config.gradient_clip_val)
 
@@ -59,18 +81,23 @@ class SegTrial(PyTorchTrial):
                 T_max=self.hparams.lr_config.lr_T_max * iters_per_epoch,
                 eta_min=self.hparams.lr_config.lr_eta_min,
                 last_epoch=self.hparams.lr_config.lr_last_epoch,
-            ),
+            ),  # type: ignore
             step_mode=LRScheduler.StepMode.STEP_EVERY_EPOCH,
         )
 
         ## Loss function
-        # Focal Loss will handle the class imbalance, and Lovasz Loss will optimize the Jaccard metric.
-        self.focal_loss = smp.losses.FocalLoss(
-            mode="binary", alpha=self.loss_cfg.focal_loss.alpha, gamma=self.loss_cfg.focal_loss.gamma
+        # Focal Tversky loss: Modified Tversky loss that introduces a focusing parameter that places
+        # more weight on the false negatives and false positives, helping the model pay more attention
+        # to the minority class.
+        self.focal_tversky_loss = FocalTverskyLoss(
+            alpha=self.loss_cfg.focal_tversky_loss.alpha,
+            beta=self.loss_cfg.focal_tversky_loss.beta,
+            gamma=self.loss_cfg.focal_tversky_loss.gamma,
+            from_logits=False,
         )
-        self.lovasz_loss = smp.losses.LovaszLoss(
-            mode="binary", per_image=self.loss_cfg.lovasz_loss.per_image, from_logits=True
-        )
+        # MS-SSIM loss: Focuses on the pixel level structure information. This helps in achieving a high
+        # positive linear correlation between the ground truth and the predicted masks.
+        self.ms_ssim_module = MS_SSIM(data_range=1.0, channel=1)
 
         # Instantiate all the callbacks
         self.progress_bar_callback = TQDMProgressBar(trial=self, refresh_rate=2)
@@ -88,21 +115,35 @@ class SegTrial(PyTorchTrial):
     def build_callbacks(self) -> Dict[str, PyTorchCallback]:
         return {"progress": self.progress_bar_callback, "early_stopping": self.early_stopping_callback}
 
+    def configure_model(self) -> SegmentationModel:
+        """Configure the model and compile it using the `reduce-overhead` mode for faster training."""
+        smp_param = self.hparams.smp_config
+        try:
+            seg_module = SEG_MODELS_CFG[smp_param.model].module
+        except KeyError:
+            raise KeyError(
+                f"Wrong segmentation model name `{smp_param.model}`, supported models: {list(SEG_MODELS_CFG.keys())}"
+            )
+        model = seg_module(
+            encoder_name=smp_param.encoder, encoder_weights=smp_param.encoder_weights, activation="sigmoid"
+        )
+        opt_model = torch.compile(model)
+        return opt_model
+
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure optimizer and learning rate scheduler."""
         optimizer = getattr(torch.optim, self.hparams.optimizer_config.optimizer)
 
         return optimizer(
             self.model.parameters(),
-            lr=self.hparams.initial_lr,
+            lr=self.initial_lr,
             weight_decay=self.hparams.optimizer_config.weight_decay,
         )
 
     def _calculate_iter_per_epoch(self) -> int:
         """Calculate the number of iterations per epoch."""
         train_data_size = len(self.init_dataset(DatasetSplit.TRAIN))
-        batch_size = self.context.get_global_batch_size()
-        return ceil(train_data_size / batch_size)
+        return ceil(train_data_size / self.global_batch_size)
 
     def init_dataset(self, split: DatasetSplit) -> SegDataset:
         """Initialize the dataset for semantic segmentation.
@@ -115,7 +156,7 @@ class SegTrial(PyTorchTrial):
         """
         filename = self.data_cfg.filename
         foldername = filename.split(".")[0]
-        dataset_dir = f"{self.download_dir}/{foldername}/datasets"
+        dataset_dir = f"{self.download_dir}/{foldername}"
 
         # Check if the dataset directory exists, or if force_download is enabled
         if self.data_cfg.force_download or not Path(dataset_dir).exists():
@@ -130,7 +171,7 @@ class SegTrial(PyTorchTrial):
         tfms = SegmentTransform(
             train=split == DatasetSplit.TRAIN,
             image_size=self.image_size,
-            **self.data_cfg.get("tfm_kwargs", {}),
+            pad_divisor=SEG_MODELS_CFG[self.hparams.smp_config.model].pad_divisor,
         )
         return SegDataset(
             root_dir=dataset_dir,
@@ -160,26 +201,38 @@ class SegTrial(PyTorchTrial):
         )
 
     def _compute_loss(
-        self, logits_mask: torch.Tensor, masks: torch.Tensor, stage: str
+        self, pred_mask: torch.Tensor, target_mask: torch.Tensor, stage: str
     ) -> Dict[str, torch.Tensor]:
-        # Predicted mask contains logits, and loss_fn param `from_logits` is set to True
-        focal_loss = self.focal_loss(logits_mask, masks)
-        lovasz_loss = self.lovasz_loss(logits_mask, masks)
-        total_loss = self.loss_cfg.focal_loss.coef * focal_loss + self.loss_cfg.lovasz_loss.coef * lovasz_loss
+        """Compute the loss for the given stage. The loss is a weighted sum of the Focal Tversky loss
+        and the MS-SSIM loss.
+
+        Args:
+            pred_mask (torch.Tensor): The predicted segmentation mask.
+            target_mask (torch.Tensor): The target segmentation mask.
+            stage (str): The stage of the training (train or val).
+
+        Returns:
+            Dict[str, torch.Tensor]: A dictionary of the computed losses.
+        """
+        focal_tversky_loss = self.focal_tversky_loss(pred_mask, target_mask)
+        ms_ssim = 1 - self.ms_ssim_module(pred_mask, target_mask)
+        total_loss = (
+            self.loss_cfg.focal_tversky_loss.coef * focal_tversky_loss
+            + self.loss_cfg.ms_ssim_loss.coef * ms_ssim
+        )
         return {
-            f"{stage}_focal_loss": focal_loss,
-            f"{stage}_lovasz_loss": lovasz_loss,
+            f"{stage}_focal_tversky_loss": focal_tversky_loss,
+            f"{stage}_ms_ssim_loss": ms_ssim,
             f"{stage}_total_loss": total_loss,
         }
 
     def train_batch(self, batch: TorchData, epoch_idx: int, batch_idx: int) -> Dict[str, torch.Tensor]:
         batch = cast(Dict[str, torch.Tensor], batch)
-        images, masks = batch["image"], batch["mask"]
-        images, masks = images.float(), masks.float()
-        logits_mask = self.model(images)
+        images, target_masks = batch["image"], batch["mask"]
+        logit_masks = self.model(images)
 
         ## Compute loss
-        loss_dict = self._compute_loss(logits_mask, masks, stage="train")
+        loss_dict = self._compute_loss(logit_masks, target_masks, stage="train")
 
         # Calculate the gradients with the dice loss
         self.context.backward(loss_dict["train_total_loss"])
@@ -192,20 +245,14 @@ class SegTrial(PyTorchTrial):
 
     def evaluate_batch(self, batch: TorchData, batch_idx: int) -> Dict[str, torch.Tensor]:
         batch = cast(Dict[str, torch.Tensor], batch)
-        images, masks = batch["image"], batch["mask"]
-        images, masks = images.float(), masks.float()
-        logits_mask = self.model(images)
+        images, target_masks = batch["image"], batch["mask"]
+        logit_masks = self.model(images)
 
         ## Compute loss
-        loss_dict = self._compute_loss(logits_mask, masks, stage="val")
-
-        ## Compute metrics for some threshold
-        # first convert mask values to probabilities, then apply thresholding
-        prob_mask = logits_mask.sigmoid()
-        pred_mask = (prob_mask > 0.5).float()
+        loss_dict = self._compute_loss(logit_masks, target_masks, stage="val")
 
         # Update the metric reducer and progress bar
-        self.reducer.update(pred_mask, masks)
+        self.reducer.update(logit_masks, target_masks.long())
         self.progress_bar_callback.val_update(batch_idx)
 
         return loss_dict
