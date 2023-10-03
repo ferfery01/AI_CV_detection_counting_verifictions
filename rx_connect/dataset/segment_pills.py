@@ -38,6 +38,7 @@ size. The cropped image and mask will be saved to the output directory.
 def segment_pills(
     image_path: Path,
     layout: Layouts,
+    use_sam: bool,
     segmentation_obj: Optional[RxSemanticSegmentation],
     image_dir: Path,
     mask_dir: Path,
@@ -69,13 +70,22 @@ def segment_pills(
 
     # Since MC_C3PI_REFERENCE_SEG_V1_6 layout is already segmented, we directly generate the mask.
     # For other layouts, we use the semantic segmentation model to generate the mask.
-    if segmentation_obj is None:
+    if layout == Layouts.MC_C3PI_REFERENCE_SEG_V1_6:
         # Generate a grayscale mask for the image
         mask = generate_grayscale_mask(image)
-    else:
+    elif use_sam:
+        from rx_connect.generator.sam_utils import get_mask_from_SAM
+
+        # Use the SAM-HQ model to generate the mask
+        mask = get_mask_from_SAM(image)
+    elif segmentation_obj is not None:
         # Segment the image
         mask = segmentation_obj(image, min_size=10000)
         mask = clear_border(mask)
+    else:
+        raise ValueError(
+            "Either the segmentation object or the SAM model must be provided to generate the mask."
+        )
 
     # Separate each pill and mask
     cropped_pills, cropped_masks = separate_pills_and_masks(
@@ -151,6 +161,7 @@ def segment_pills(
 )
 @click.option("-h", "--height", default=720, show_default=True, help="Pill image height in pixels.")
 @click.option("-w", "--width", default=1280, show_default=True, help="Pill image width in pixels.")
+@click.option("-s", "--use-sam", is_flag=True, help="Use the SAM-HQ model to generate the masks.")
 @click.option(
     "-c",
     "--num-cpu",
@@ -171,6 +182,7 @@ def main(
     expand_pixels: int,
     height: int,
     width: int,
+    use_sam: bool,
     num_cpu: int,
     device: str,
 ) -> None:
@@ -202,13 +214,14 @@ def main(
 
     # Initialize the segmentation object and transforms
     segmentation_obj: Optional[RxSemanticSegmentation] = None
-    if layout != Layouts.MC_C3PI_REFERENCE_SEG_V1_6:
+    if not use_sam or layout != Layouts.MC_C3PI_REFERENCE_SEG_V1_6:
         segmentation_obj = RxSemanticSegmentation(device=device)
         segmentation_obj._image_size = layout.dimensions
 
     # Generate images and annotations and save them
     kwargs = {
         "layout": layout,
+        "use_sam": use_sam,
         "segmentation_obj": segmentation_obj,
         "image_dir": image_dir,
         "mask_dir": mask_dir,
