@@ -9,6 +9,7 @@ SHARED_REMOTE_CKPT_DIR = SHARED_REMOTE_DIR / "checkpoints"
 SHARED_EPILL_DATA_DIR = SHARED_REMOTE_DIR / "ePillID" / "pills"
 """The shared ePillID data directory.
 """
+
 SHARED_RXIMAGE_DATA_DIR = SHARED_REMOTE_DIR / "RxImage"
 """The shared RxImage data directory.
 """
@@ -26,6 +27,9 @@ CKPT_DIR = ROOT_DIR / "checkpoints"
 """
 PIPELINES_DIR = PROJECT_DIR / "pipelines"
 """The pipelines directory.
+"""
+SHARED_PILL_VERIFICATION_DIR = SHARED_REMOTE_DIR / "pill_verification_data" / "detection"
+"""The pill verification sample directory.
 """
 CACHE_DIR = ROOT_DIR / ".cache"
 """The cache directory where artifacts loaded from the remote server are stored.

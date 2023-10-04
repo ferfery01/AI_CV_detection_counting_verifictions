@@ -36,7 +36,7 @@ jobs:
 
           - task: Cache@2
             inputs:
-                key: conda | v1 | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | requirements-training.txt| setup.cfg
+                key: conda | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | requirements-training.txt| setup.cfg | v1
                 restoreKeys: |
                     python | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | requirements-training.txt
                     python | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt
