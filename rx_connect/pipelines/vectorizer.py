@@ -361,8 +361,8 @@ class RxVectorizerCEL(RxVectorizer):
 
     def __init__(
         self,
-        model_path: Union[str, Path] = f"{SHARED_REMOTE_CKPT_DIR}/verification/resnet_50_CEL_best.ckpt",
-        arch: str = "resnet50",
+        model_path: Union[str, Path] = f"{SHARED_REMOTE_CKPT_DIR}/verification/resnet_18_CEL.ckpt",
+        arch: str = "resnet18",
         device: Union[str, torch.device] = get_best_available_device(),
         require_masked_input: bool = False,
         similarity_fn: Callable[..., np.ndarray] = custom_similarity_fn_CS_ReLU,
@@ -391,13 +391,9 @@ class RxVectorizerCEL(RxVectorizer):
 
     def _load_model(self) -> None:
         """Loads the embedding model on the given device and sets it to eval mode."""
-        self._model = (
-            EmbeddingLightningModel.load_from_checkpoint(
-                checkpoint_path=self._model_path, model=ResNetEmbeddingModel(self.arch)
-            )
-            .to_torchscript()
-            .to(self._device)  # type: ignore
-        )
+        self._model = EmbeddingLightningModel(model=ResNetEmbeddingModel(self.arch))
+        checkpoint = torch.load(self._model_path, map_location=self._device)
+        self._model.load_state_dict(checkpoint["state_dict"])
         logger.info(f"Loaded Embedding model from {self._model_path} on device {self._device}.")
 
     def _preprocess(self, image: np.ndarray) -> torch.Tensor:
