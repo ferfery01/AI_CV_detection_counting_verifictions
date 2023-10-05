@@ -36,10 +36,10 @@ jobs:
 
           - task: Cache@2
             inputs:
-                key: conda | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | requirements-training.txt| setup.cfg | v2
+                key: python | "$(Agent.OS)" | "$(pythonVersion)" | requirements-training.txt | requirements.txt | setup.cfg
                 restoreKeys: |
-                    python | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt | requirements-training.txt
-                    python | "$(Agent.OS)" | "$(pythonVersion)" | requirements.txt
+                    python | "$(Agent.OS)" | "$(pythonVersion)" | requirements-training.txt | requirements.txt
+                    python | "$(Agent.OS)" | "$(pythonVersion)" | requirements-training.txt
                     python | "$(Agent.OS)" | "$(pythonVersion)"
                     python | "$(Agent.OS)"
                 path: $(pipDownloadDir)
@@ -53,6 +53,12 @@ jobs:
                 echo "**************************************************"
                 echo "******** Installing required dependencies ********"
                 echo "**************************************************"
+
+                # torch 2.x gets stuck on the azure-pipelines ubuntu-22.04 image when loading from the cache
+                # so we need to manually install it before installing the rest of the dependencies
+                pip install torch==2.0.1+cu118 --find-links https://download.pytorch.org/whl/torch_stable.html
+
+                # Install the rest of the dependencies
                 pip install --cache-dir $(pipDownloadDir) -r requirements.txt
             displayName: Install dependencies
 

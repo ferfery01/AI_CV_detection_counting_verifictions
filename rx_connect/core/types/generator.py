@@ -6,6 +6,7 @@ import numpy as np
 YOLO_LABELS = "labels"
 SEGMENTATION_LABELS = "comp_masks"
 COCO_LABELS = "COCO"
+PILL_INFO_CSV = "pill_info.csv"
 
 
 class PillMaskPaths(NamedTuple):

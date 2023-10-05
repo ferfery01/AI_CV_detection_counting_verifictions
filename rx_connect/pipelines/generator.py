@@ -5,7 +5,7 @@ from typing import List, Optional, Sequence, Tuple, Union
 import albumentations as A
 import numpy as np
 
-from rx_connect import SHARED_RXIMAGE_DATA_DIR
+from rx_connect import SHARED_RXIMAGEV2_DATA_DIR
 from rx_connect.generator.composition import (
     ImageComposition,
     densify_groundtruth,
@@ -48,7 +48,7 @@ class RxImageGenerator:
           ├── ...
     """
 
-    data_dir: Union[str, Path] = SHARED_RXIMAGE_DATA_DIR
+    data_dir: Union[str, Path] = SHARED_RXIMAGEV2_DATA_DIR
     """Directory containing pill images, masks, and/or csv file containing the metadata. It can either
     be a local directory or remote directory.
     """
@@ -186,6 +186,7 @@ class RxImageGenerator:
             metadata = self._metadata_df.loc[file_hash].to_dict()
             metadata_list.append(
                 PillMetadata(
+                    ref_id=file_hash,
                     drug_name=metadata.get("GenericName"),
                     ndc=metadata.get("NDC9"),
                     color=metadata.get("Color"),

@@ -5,15 +5,25 @@ from uuid import uuid4
 
 import click
 import cv2
+import pandas as pd
 from joblib import Parallel, delayed
 from PIL import Image
 from tqdm import trange
 
-from rx_connect import ROOT_DIR, SHARED_RXIMAGE_DATA_DIR
-from rx_connect.core.types.generator import SEGMENTATION_LABELS, YOLO_LABELS
+from rx_connect import ROOT_DIR, SHARED_RXIMAGEV2_DATA_DIR
+from rx_connect.core.types.generator import (
+    PILL_INFO_CSV,
+    SEGMENTATION_LABELS,
+    YOLO_LABELS,
+)
 from rx_connect.core.utils.str_utils import process_and_verify_string
 from rx_connect.generator.annotations import create_yolo_annotations
-from rx_connect.generator.metadata import COLORS_LIST, SHAPES_LIST
+from rx_connect.generator.metadata import (
+    COLORS_LIST,
+    SHAPES_LIST,
+    append_metadata_to_csv,
+)
+from rx_connect.generator.visualize import generate_heatmap, generate_stacked_bar_chart
 from rx_connect.pipelines.generator import RxImageGenerator
 from rx_connect.tools.logging import setup_logger
 
@@ -70,24 +80,30 @@ def generate_samples(generator: RxImageGenerator, output_folder: Path, mode: str
             for j in range(len(anno_yolo)):
                 f.write(" ".join(str(el) for el in anno_yolo[j]) + "\n")
 
-        # Save mapping between composed image and sampled pill paths
-        with (output_folder / mode / "pill_info.csv").open("a") as f:
-            f.write(f"{_id}.jpg: {', '.join(str(path) for path in generator.sampled_images_path)}\n")
-
     # Save instance segmentation masks as PIL images
     if mode in ("both", "segmentation"):
         mask_comp_pl = Image.fromarray(mask_comp).convert("L")
         mask_comp_pl.save(f"{output_folder}/{mode}/{SEGMENTATION_LABELS}/{_id}.png")
+
+    # Add metadata to CSV file
+    append_metadata_to_csv(
+        metadata_entries=generator.metadata,
+        csv_file=output_folder / mode / PILL_INFO_CSV,
+        extra_columns={"image_name": f"{_id}.jpg"},
+    )
 
 
 @click.command()
 @click.option(
     "-i",
     "--input-dir",
-    default=SHARED_RXIMAGE_DATA_DIR,
+    default=SHARED_RXIMAGEV2_DATA_DIR,
     type=click.Path(path_type=Path),
     show_default=True,
-    help="Local or remote directory containing pill images, masks, and/or a CSV file with metadata.",
+    help="""Local or remote directory containing pill images, masks, and/or a CSV file with metadata.
+    The ePillID dataset is located at SHARED_EPILL_DATA_DIR and the RxImageV1 dataset is located at
+    SHARED_RXIMAGE_DATA_DIR.
+    """,
 )
 @click.option(
     "-b",
@@ -312,6 +328,12 @@ def main(
 
     logger.info("\n".join(msgs))
     logger.info(f"Images are saved to the folder: {img_path}")
+
+    # Log visualization plots
+    df = pd.read_csv(output_dir / mode / PILL_INFO_CSV)
+    logger.info("Generating visualization plots...")
+    generate_heatmap(df, save_path=output_dir / mode / "heatmap.png")
+    generate_stacked_bar_chart(df, save_path=output_dir / mode / "stacked_bar_chart.png")
 
 
 if __name__ == "__main__":
