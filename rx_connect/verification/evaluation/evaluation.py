@@ -72,7 +72,7 @@ vectorizer_registery: Dict[str, RxVectorizer] = {
 @click.option(
     "-n",
     "--nfalse-ref",
-    default=10,
+    default=1,
     show_default=True,
     type=int,
     help="number of false pill references to compare each pill tray image against",

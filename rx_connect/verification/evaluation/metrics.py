@@ -74,11 +74,15 @@ class BinaryClassificationEvaluator:
             Precision = 0.0
         else:
             Precision = self.true_pos / (self.true_pos + self.false_pos)
+
         Recall = self.true_pos / n_pos
 
         # The Fβ_score score is useful when we want to prioritize
         # one measure while preserving results from the other measure.
-        F_score = (1 + beta**2) * (Precision * Recall) / ((beta**2 * Precision) + Recall)
+        if Precision == 0 and Recall == 0:
+            F_score = 0
+        else:
+            F_score = (1 + beta**2) * (Precision * Recall) / ((beta**2 * Precision) + Recall)
         return Precision, Recall, F_score, t
 
     def _binary(self, t) -> None:
