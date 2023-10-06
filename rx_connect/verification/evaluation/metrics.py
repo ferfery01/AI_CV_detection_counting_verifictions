@@ -70,7 +70,10 @@ class BinaryClassificationEvaluator:
 
         self._binary(t)
         n_pos = len(self.pos_predicted)
-        Precision = self.true_pos / (self.true_pos + self.false_pos)
+        if self.true_pos + self.false_pos == 0:
+            Precision = 0.0
+        else:
+            Precision = self.true_pos / (self.true_pos + self.false_pos)
         Recall = self.true_pos / n_pos
 
         # The Fβ_score score is useful when we want to prioritize

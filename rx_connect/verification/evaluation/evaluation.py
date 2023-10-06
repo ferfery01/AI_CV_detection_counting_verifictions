@@ -202,7 +202,7 @@ def main(
     logger.info("\n")
     logger.info("\u253C" * 40)
     logger.info(
-        f"Binary evaluation metrics using Youden's J statistic for {vectorizer_model} vectorizer model"
+        f"Binary evaluation metrics using Youden's J statistic for vectorizer model = {vectorizer_model} "
     )
     logger.info(f"Optimal threshold  = {opt_threshold:.2f}")
     logger.info(f"Precision  = {Precision: .2f}")
@@ -222,8 +222,8 @@ def main(
     logger.info("\u253C" * 40)
     logger.info(
         f"Binary evaluation metrics using customized "
-        f"percision-recall curve for {vectorizer_model} "
-        f"vectorizer model and beta = {beta}"
+        f"percision-recall curve for vectorizer model = "
+        f"{vectorizer_model} and beta = {beta}:"
     )
 
     logger.info(f"Optimal threshold  = {opt_threshold_beta:.2f}")
@@ -234,11 +234,11 @@ def main(
     prob_diff_positive, prob_diff_negative = binary_cls_eval.prob_metrics(
         prob_diff_pos_dict, prob_diff_neg_dict
     )
-    logger.info("\u2500" * 40)
+    logger.info("\u253C" * 40)
     logger.info(f"Probability error for {vectorizer_model} vectorizer model:")
     logger.info(f"Mean probability error for true references = {prob_diff_positive:.2f}")
     logger.info(f"Mean probability error for false references = {prob_diff_negative:.2f}")
-    logger.info("\u2500" * 40)
+    logger.info("\u253C" * 40)
 
 
 if __name__ == "__main__":
