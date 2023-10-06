@@ -72,7 +72,7 @@ vectorizer_registery: Dict[str, RxVectorizer] = {
 @click.option(
     "-n",
     "--nfalse-ref",
-    default=10,
+    default=1,
     show_default=True,
     type=int,
     help="number of false pill references to compare each pill tray image against",
@@ -196,8 +196,8 @@ def main(
     binary_cls_eval = BinaryClassificationEvaluator(
         target, predicted, pos_predicted, neg_predicted, vectorizer_model, plot_path
     )
-    binary_cls_eval.plots()
     Precision, Recall, F1_score, opt_threshold = binary_cls_eval.binary_metrics()
+    binary_cls_eval.plots()
 
     logger.info("\n")
     logger.info("\u253C" * 40)

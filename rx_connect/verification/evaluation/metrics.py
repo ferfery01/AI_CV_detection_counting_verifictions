@@ -67,7 +67,7 @@ class BinaryClassificationEvaluator:
         if t is None:
             t = self.opt_threshold
 
-        self._binary_metrics(t)
+        self._binary(t)
         n_pos = len(self.pos_predicted)
         Precision = self.true_pos / (self.true_pos + self.false_pos)
         Recall = self.true_pos / n_pos
@@ -77,7 +77,7 @@ class BinaryClassificationEvaluator:
         F_score = (1 + beta**2) * (Precision * Recall) / ((beta**2 * Precision) + Recall)
         return Precision, Recall, F_score, t
 
-    def _binary_metrics(self, t) -> None:
+    def _binary(self, t) -> None:
         # apply threshold (t) to probabilities to create binary (0 and 1) labels
         self.true_pos = sum(self.pos_predicted > t)
         self.false_pos = sum(self.neg_predicted > t)
@@ -153,6 +153,8 @@ class BinaryClassificationEvaluator:
         self._save_plot()
 
     def _save_plot(self) -> None:
+        self._youden()
+
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1], linestyle="--", label="1:1")
         ax.plot(self.fpr, self.tpr, linewidth=1.5)
