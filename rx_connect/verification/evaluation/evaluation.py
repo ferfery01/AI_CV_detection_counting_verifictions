@@ -72,7 +72,7 @@ vectorizer_registery: Dict[str, RxVectorizer] = {
 @click.option(
     "-n",
     "--nfalse-ref",
-    default=1,
+    default=10,
     show_default=True,
     type=int,
     help="number of false pill references to compare each pill tray image against",
@@ -139,59 +139,56 @@ def main(
     neg_predicted: List[float] = []
     prob_diff_pos_dict, prob_diff_neg_dict = {}, {}
 
-    for j, row in df.iterrows():
-        if j < 2:
-            true_ref, img_name = Path(row[1]).name, row[0]
-            refname_true, refname_false, im_path, random_seed = load_pill_images_and_references(
-                sample_dir, ref_list, data_dir, true_ref, img_name, nfalse_ref, random_seed
-            )
+    for _, row in df.iterrows():
+        true_ref, img_name = Path(row[1]).name, row[0]
+        refname_true, refname_false, im_path, random_seed = load_pill_images_and_references(
+            sample_dir, ref_list, data_dir, true_ref, img_name, nfalse_ref, random_seed
+        )
 
-            try:
+        try:
+            imageObj.load_image(im_path)  # load the image of the pill tray
+            imageObj.load_ref_image(refname_true)  # load true ref_images
+            pos_similarity_scores = imageObj.similarity_scores
+
+            pos_predicted += pos_similarity_scores.tolist()
+            predicted += pos_similarity_scores.tolist()
+            target += [1.0] * len(pos_similarity_scores.tolist())
+
+            # prob_diff_pos is in fact np.mean([1.0 - x for x in pos_similarity_scores])
+
+            mean_pos = 1.00 - np.mean(pos_similarity_scores)
+            prob_diff_pos_dict[im_path.name] = (mean_pos, pos_similarity_scores.size)
+
+            assert np.all(pos_similarity_scores <= 1.0), "Some values of similarity scores is out of range."
+
+            # for each pill tray image, we compare it against multiple randomly chosen
+            # false pill references to minimize the bias
+
+            for i in range(nfalse_ref):
                 imageObj.load_image(im_path)  # load the image of the pill tray
-                imageObj.load_ref_image(refname_true)  # load true ref_images
-                pos_similarity_scores = imageObj.similarity_scores
+                imageObj.load_ref_image(refname_false[i])  # load the false ref_images
+                neg_similarity_scores = imageObj.similarity_scores
 
-                pos_predicted += pos_similarity_scores.tolist()
-                predicted += pos_similarity_scores.tolist()
-                target += [1.0] * len(pos_similarity_scores.tolist())
+                neg_predicted += neg_similarity_scores.tolist()
+                predicted += neg_similarity_scores.tolist()
+                target += [0.00] * len(neg_similarity_scores.tolist())
 
-                # prob_diff_pos is in fact np.mean([1.0 - x for x in pos_similarity_scores])
+                # prob_diff_neg is abs(0.0 - prob_diff_neg)
+                mean_neg = np.mean(neg_similarity_scores, dtype=np.float64)
+                prob_diff_neg_dict[im_path.name] = (mean_neg, neg_similarity_scores.size)
 
-                mean_pos = 1.00 - np.mean(pos_similarity_scores)
-                prob_diff_pos_dict[im_path.name] = (mean_pos, pos_similarity_scores.size)
+        except Exception:
+            logger.warning("error loading image", im_path)
 
-                assert np.all(
-                    pos_similarity_scores <= 1.0
-                ), "Some values of similarity scores is out of range."
-
-                # for each pill tray image, we compare it against multiple randomly chosen
-                # false pill references to minimize the bias
-
-                for i in range(nfalse_ref):
-                    imageObj.load_image(im_path)  # load the image of the pill tray
-                    imageObj.load_ref_image(refname_false[i])  # load the false ref_images
-                    neg_similarity_scores = imageObj.similarity_scores
-
-                    neg_predicted += neg_similarity_scores.tolist()
-                    predicted += neg_similarity_scores.tolist()
-                    target += [0.00] * len(neg_similarity_scores.tolist())
-
-                    # prob_diff_neg is abs(0.0 - prob_diff_neg)
-                    mean_neg = np.mean(neg_similarity_scores, dtype=np.float64)
-                    prob_diff_neg_dict[im_path.name] = (mean_neg, neg_similarity_scores.size)
-
-            except Exception:
-                logger.warning("error loading image", im_path)
-
-                logger.info(
-                    "check the image path printed above."
-                    "The error is most likely is due to the inability"
-                    "of the moSdel to detect either the bounding"
-                    "boxes or shape. This happens mostly for"
-                    "very unique shapes of the pills or when"
-                    "the noise ratio exists in the background"
-                    "is relatively high"
-                )
+            logger.info(
+                "check the image path printed above."
+                "The error is most likely is due to the inability"
+                "of the moSdel to detect either the bounding"
+                "boxes or shape. This happens mostly for"
+                "very unique shapes of the pills or when"
+                "the noise ratio exists in the background"
+                "is relatively high"
+            )
 
     binary_cls_eval = BinaryClassificationEvaluator(
         target, predicted, pos_predicted, neg_predicted, vectorizer_model, plot_path
