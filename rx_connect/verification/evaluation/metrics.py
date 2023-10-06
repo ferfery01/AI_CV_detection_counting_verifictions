@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -38,7 +38,6 @@ class BinaryClassificationEvaluator:
         self.pos_predicted = pos_predicted
         self.neg_predicted = neg_predicted
         self.model = model
-        self._youden()
 
     def _youden(self) -> None:
         """
@@ -47,39 +46,71 @@ class BinaryClassificationEvaluator:
         """
 
         # Calculate ROC curve
-        self.fpr, self.tpr, self.threshold = roc_curve(self.target, self.predicted)
+        self.fpr, self.tpr, threshold = roc_curve(self.target, self.predicted)
 
         # get the best threshold: where J is maximum and J is defined as follow
-        # J = Sensitivity + Specificity – 1 or J = TPR + (1 – FPR) – 1 or sqrt(tpr*(1-fpr))
+        #  or J = Sensitivity + Specificity – 1
+        #  or J = TPR + (1 – FPR) – 1
+        #  or J = sqrt(tpr*(1-fpr))
+
         J = self.tpr - self.fpr
         self.ix = np.argmax(J)
-        self.opt_threshold = self.threshold[self.ix]
+        self.opt_threshold = threshold[self.ix]
 
-    def _save_plot(self) -> None:
-        fig, ax = plt.subplots()
-        ax.plot([0, 1], [0, 1], linestyle="--", label="1:1")
-        ax.plot(self.fpr, self.tpr, linewidth=1.5)
-        ax.plot(self.fpr[self.ix], self.tpr[self.ix], "bo", ms=15)
-        plt.xlabel("False Positive Rate (FPR)")
-        plt.ylabel("True Positive Rate (TPR)")
-        plt.title(f"ROC Curve for {self.model} ({self.threshold_label}={self.opt_threshold:.2f})")
-        self.plot_path.mkdir(parents=True, exist_ok=True)
-        plot_filename = self.plot_path / f"{self.model}.png"
-        fig.savefig(plot_filename)
+    def F_score_metrics(self, t=None, beta=1.0) -> Tuple[float, float, float, Union[float, None]]:
+        # t is the threshold
+        # F1-score is defined where β (beta) is 1 as usual.
+        # A β value less than 1 favors the percision metric,
+        # while values greater than 1 favor the recall metric.
+        # beta = 0.5 and =2 are the most commonly used measures other than F1 scores.
 
-    def plots(self) -> None:
-        self._save_plot()
+        if t is None:
+            t = self.opt_threshold
 
-    def binary_metrics(self) -> Tuple[float, float, float]:
-        true_pos = sum(self.pos_predicted > self.opt_threshold)
-        false_pos = sum(self.neg_predicted > self.opt_threshold)
-
+        self._binary_metrics(t)
         n_pos = len(self.pos_predicted)
-        Precision = true_pos / (true_pos + false_pos)
-        Recall = true_pos / n_pos
-        F1_score = 2 * (Precision * Recall) / (Precision + Recall)
+        Precision = self.true_pos / (self.true_pos + self.false_pos)
+        Recall = self.true_pos / n_pos
 
-        return Precision, Recall, F1_score
+        # The Fβ_score score is useful when we want to prioritize
+        # one measure while preserving results from the other measure.
+        F_score = (1 + beta**2) * (Precision * Recall) / ((beta**2 * Precision) + Recall)
+        return Precision, Recall, F_score, t
+
+    def _binary_metrics(self, t) -> None:
+        # apply threshold (t) to probabilities to create binary (0 and 1) labels
+        self.true_pos = sum(self.pos_predicted > t)
+        self.false_pos = sum(self.neg_predicted > t)
+
+    def binary_metrics(self) -> Tuple[float, float, float, Union[float, None]]:
+        self._youden()
+        return self.F_score_metrics()
+
+    def custome_binary_metrics(self) -> Tuple[float, float, float, float, float]:
+        thresholds = np.arange(0, 1, 0.001)
+
+        # F1-score is defined where β is 1. A β value less than 1
+        # favors the precision metric, while values greater than 1
+        # favor the recall metric. beta = 0.5 and 2 are the most
+        # commonly used measures other than F1 scores. Here we use beta = 0.5
+
+        beta = 0.5
+        Precision_beta, Recall_beta, F_beta_scores = (
+            [0.0] * len(thresholds),
+            [0.0] * len(thresholds),
+            [0.0] * len(thresholds),
+        )
+
+        for i, t in enumerate(thresholds):
+            p, r, f, _ = self.F_score_metrics(t, beta)
+
+            Precision_beta[i] = p
+            Recall_beta[i] = r
+            F_beta_scores[i] = f
+
+        # get optimal threshold
+        ix = np.argmax(F_beta_scores)
+        return Precision_beta[ix], Recall_beta[ix], F_beta_scores[ix], thresholds[ix], beta
 
     def prob_metrics(
         self,
@@ -117,3 +148,18 @@ class BinaryClassificationEvaluator:
         prob_diff_negative = sum_n / sum_ncount
 
         return prob_diff_positive, prob_diff_negative
+
+    def plots(self) -> None:
+        self._save_plot()
+
+    def _save_plot(self) -> None:
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1], linestyle="--", label="1:1")
+        ax.plot(self.fpr, self.tpr, linewidth=1.5)
+        ax.plot(self.fpr[self.ix], self.tpr[self.ix], "bo", ms=15)
+        plt.xlabel("False Positive Rate (FPR)")
+        plt.ylabel("True Positive Rate (TPR)")
+        plt.title(f"ROC Curve for {self.model} ({self.threshold_label}={self.opt_threshold:.2f})")
+        self.plot_path.mkdir(parents=True, exist_ok=True)
+        plot_filename = self.plot_path / f"{self.model}.png"
+        fig.savefig(plot_filename)

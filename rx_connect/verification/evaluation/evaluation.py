@@ -139,77 +139,101 @@ def main(
     neg_predicted: List[float] = []
     prob_diff_pos_dict, prob_diff_neg_dict = {}, {}
 
-    for i, row in df.iterrows():
-        true_ref, img_name = Path(row[1]).name, row[0]
-        refname_true, refname_false, im_path, random_seed = load_pill_images_and_references(
-            sample_dir, ref_list, data_dir, true_ref, img_name, nfalse_ref, random_seed
-        )
-
-        try:
-            imageObj.load_image(im_path)  # load the image of the pill tray
-            imageObj.load_ref_image(refname_true)  # load true ref_images
-            pos_similarity_scores = imageObj.similarity_scores
-
-            pos_predicted += pos_similarity_scores.tolist()
-            predicted += pos_similarity_scores.tolist()
-            target += [1.0] * len(pos_similarity_scores.tolist())
-
-            # prob_diff_pos is in fact np.mean([1.0 - x for x in pos_similarity_scores])
-
-            mean_pos = 1.00 - np.mean(pos_similarity_scores)
-            prob_diff_pos_dict[im_path.name] = (mean_pos, pos_similarity_scores.size)
-
-            assert np.all(pos_similarity_scores <= 1.0), "Some values of similarity scores is out of range."
-
-            # for each pill tray image, we compare it against multiple randomly chosen
-            # false pill references to minimize the bias
-
-            for i in range(nfalse_ref):
-                imageObj.load_image(im_path)  # load the image of the pill tray
-                imageObj.load_ref_image(refname_false[i])  # load the false ref_images
-                neg_similarity_scores = imageObj.similarity_scores
-
-                neg_predicted += neg_similarity_scores.tolist()
-                predicted += neg_similarity_scores.tolist()
-                target += [0.00] * len(neg_similarity_scores.tolist())
-
-                # prob_diff_neg is abs(0.0 - prob_diff_neg)
-                mean_neg = np.mean(neg_similarity_scores, dtype=np.float64)
-                prob_diff_neg_dict[im_path.name] = (mean_neg, neg_similarity_scores.size)
-
-        except Exception:
-            logger.exception("error loading image", im_path)
-
-            logger.info(
-                "check the image path printed above."
-                "The error is most likely is due to the inability"
-                "of the moSdel to detect either the bounding"
-                "boxes or shape. This happens mostly for"
-                "very unique shapes of the pills or when"
-                "the noise ratio exists in the background"
-                "is relatively high"
+    for j, row in df.iterrows():
+        if j < 2:
+            true_ref, img_name = Path(row[1]).name, row[0]
+            refname_true, refname_false, im_path, random_seed = load_pill_images_and_references(
+                sample_dir, ref_list, data_dir, true_ref, img_name, nfalse_ref, random_seed
             )
+
+            try:
+                imageObj.load_image(im_path)  # load the image of the pill tray
+                imageObj.load_ref_image(refname_true)  # load true ref_images
+                pos_similarity_scores = imageObj.similarity_scores
+
+                pos_predicted += pos_similarity_scores.tolist()
+                predicted += pos_similarity_scores.tolist()
+                target += [1.0] * len(pos_similarity_scores.tolist())
+
+                # prob_diff_pos is in fact np.mean([1.0 - x for x in pos_similarity_scores])
+
+                mean_pos = 1.00 - np.mean(pos_similarity_scores)
+                prob_diff_pos_dict[im_path.name] = (mean_pos, pos_similarity_scores.size)
+
+                assert np.all(
+                    pos_similarity_scores <= 1.0
+                ), "Some values of similarity scores is out of range."
+
+                # for each pill tray image, we compare it against multiple randomly chosen
+                # false pill references to minimize the bias
+
+                for i in range(nfalse_ref):
+                    imageObj.load_image(im_path)  # load the image of the pill tray
+                    imageObj.load_ref_image(refname_false[i])  # load the false ref_images
+                    neg_similarity_scores = imageObj.similarity_scores
+
+                    neg_predicted += neg_similarity_scores.tolist()
+                    predicted += neg_similarity_scores.tolist()
+                    target += [0.00] * len(neg_similarity_scores.tolist())
+
+                    # prob_diff_neg is abs(0.0 - prob_diff_neg)
+                    mean_neg = np.mean(neg_similarity_scores, dtype=np.float64)
+                    prob_diff_neg_dict[im_path.name] = (mean_neg, neg_similarity_scores.size)
+
+            except Exception:
+                logger.warning("error loading image", im_path)
+
+                logger.info(
+                    "check the image path printed above."
+                    "The error is most likely is due to the inability"
+                    "of the moSdel to detect either the bounding"
+                    "boxes or shape. This happens mostly for"
+                    "very unique shapes of the pills or when"
+                    "the noise ratio exists in the background"
+                    "is relatively high"
+                )
 
     binary_cls_eval = BinaryClassificationEvaluator(
         target, predicted, pos_predicted, neg_predicted, vectorizer_model, plot_path
     )
     binary_cls_eval.plots()
-    Precision, Recall, F1_score = binary_cls_eval.binary_metrics()
-    prob_diff_positive, prob_diff_negative = binary_cls_eval.prob_metrics(
-        prob_diff_pos_dict, prob_diff_neg_dict
-    )
+    Precision, Recall, F1_score, opt_threshold = binary_cls_eval.binary_metrics()
 
     logger.info("\n")
     logger.info("\u253C" * 40)
-
     logger.info(
         f"Binary evaluation metrics using Youden's J statistic for {vectorizer_model} vectorizer model"
     )
-    logger.info(f"Optimal threshold  = {binary_cls_eval.opt_threshold:.2f}")
+    logger.info(f"Optimal threshold  = {opt_threshold:.2f}")
     logger.info(f"Precision  = {Precision: .2f}")
     logger.info(f"Recall  = {Recall: .2f}")
     logger.info(f"F1_score = {F1_score: .2f}")
 
+    binary_cls_eval.plots()
+    (
+        Precision_beta,
+        Recall_beta,
+        F1_score_beta,
+        opt_threshold_beta,
+        beta,
+    ) = binary_cls_eval.custome_binary_metrics()
+
+    logger.info("\n")
+    logger.info("\u253C" * 40)
+    logger.info(
+        f"Binary evaluation metrics using customized "
+        f"percision-recall curve for {vectorizer_model} "
+        f"vectorizer model and beta = {beta}"
+    )
+
+    logger.info(f"Optimal threshold  = {opt_threshold_beta:.2f}")
+    logger.info(f"Precision  = {Precision_beta: .2f}")
+    logger.info(f"Recall  = {Recall_beta: .2f}")
+    logger.info(f"F1_score = {F1_score_beta: .2f}")
+
+    prob_diff_positive, prob_diff_negative = binary_cls_eval.prob_metrics(
+        prob_diff_pos_dict, prob_diff_neg_dict
+    )
     logger.info("\u2500" * 40)
     logger.info(f"Probability error for {vectorizer_model} vectorizer model:")
     logger.info(f"Mean probability error for true references = {prob_diff_positive:.2f}")
