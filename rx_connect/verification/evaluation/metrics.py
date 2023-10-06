@@ -38,6 +38,7 @@ class BinaryClassificationEvaluator:
         self.pos_predicted = pos_predicted
         self.neg_predicted = neg_predicted
         self.model = model
+        self._youden()
 
     def _youden(self) -> None:
         """
@@ -83,7 +84,6 @@ class BinaryClassificationEvaluator:
         self.false_pos = sum(self.neg_predicted > t)
 
     def binary_metrics(self) -> Tuple[float, float, float, Union[float, None]]:
-        self._youden()
         return self.F_score_metrics()
 
     def custome_binary_metrics(self) -> Tuple[float, float, float, float, float]:
@@ -153,8 +153,6 @@ class BinaryClassificationEvaluator:
         self._save_plot()
 
     def _save_plot(self) -> None:
-        self._youden()
-
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1], linestyle="--", label="1:1")
         ax.plot(self.fpr, self.tpr, linewidth=1.5)
