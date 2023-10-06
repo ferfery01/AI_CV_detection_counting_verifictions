@@ -72,7 +72,7 @@ vectorizer_registery: Dict[str, RxVectorizer] = {
 @click.option(
     "-n",
     "--nfalse-ref",
-    default=1,
+    default=10,
     show_default=True,
     type=int,
     help="number of false pill references to compare each pill tray image against",
@@ -238,6 +238,7 @@ def main(
     logger.info(f"Probability error for {vectorizer_model} vectorizer model:")
     logger.info(f"Mean probability error for true references = {prob_diff_positive:.2f}")
     logger.info(f"Mean probability error for false references = {prob_diff_negative:.2f}")
+    logger.info("\n")
     logger.info("\u253C" * 40)
 
 
