@@ -101,6 +101,7 @@ class BinaryClassificationEvaluator:
         # favors the precision metric, while values greater than 1
         # favor the recall metric. beta = 0.5 and 2 are the most
         # commonly used measures other than F1 scores. Here we use beta = 0.5
+        # ref: https://en.wikipedia.org/wiki/F-score
 
         beta = 0.5
         Precision_beta, Recall_beta, F_beta_scores = (
