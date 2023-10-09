@@ -60,10 +60,11 @@ class BinaryClassificationEvaluator:
 
     def F_score_metrics(self, t=None, beta=1.0) -> Tuple[float, float, float, Union[float, None]]:
         # t is the threshold
-        # F1-score is defined where β (beta) is 1 as usual.
-        # A β value less than 1 favors the percision metric,
-        # while values greater than 1 favor the recall metric.
-        # beta = 0.5 and =2 are the most commonly used measures other than F1 scores.
+        # F1-score is defined where β (beta) is 1 as usual
+        # The F-measure was derived so that it measures the
+        # effectiveness of retrieval with respect to a user
+        # who attaches beta times as much importance to recall than percission
+        # A β value less than 1 favors the percision metric.
 
         if t is None:
             t = self.opt_threshold
