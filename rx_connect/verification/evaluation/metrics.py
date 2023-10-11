@@ -71,8 +71,10 @@ class BinaryClassificationEvaluator:
 
         if t is None:
             t = self.opt_threshold
+        # binarizing the similarity scores saved in true_pos and false_pos using t
+        self.true_pos = sum(x > t for x in self.pos_predicted)
+        self.false_pos = sum(x > t for x in self.neg_predicted)
 
-        self._binary(t)
         n_pos = len(self.pos_predicted)
         precision = self.true_pos / (self.true_pos + self.false_pos + 1e-5)
         recall = self.true_pos / n_pos
@@ -82,11 +84,6 @@ class BinaryClassificationEvaluator:
 
         F_score = (1 + beta**2) * (precision * recall) / ((beta**2 * precision) + recall + 1e-5)
         return precision, recall, F_score, t
-
-    def _binary(self, t) -> None:
-        # apply threshold (t) to probabilities to create binary (0 and 1) labels
-        self.true_pos = sum(self.pos_predicted > t)
-        self.false_pos = sum(self.neg_predicted > t)
 
     def binary_metrics(self) -> Tuple[float, float, float, Union[float, None]]:
         return self.F_score_metrics()
