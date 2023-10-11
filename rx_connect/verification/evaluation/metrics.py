@@ -63,7 +63,7 @@ class BinaryClassificationEvaluator:
         self, thresh: Optional[float] = None, beta: float = 1.0
     ) -> Tuple[float, float, float, Union[float, None]]:
         # t is the threshold
-        # F1-score is defined where β (beta) is 1 as usual
+        # f1-score is defined where β (beta) is 1 as usual
         # The F-measure was derived so that it measures the
         # effectiveness of retrieval with respect to a user
         # who attaches beta times as much importance to recall than percission
@@ -91,25 +91,25 @@ class BinaryClassificationEvaluator:
     def custome_binary_metrics(self, beta) -> Tuple[float, float, float, float]:
         thresholds = np.arange(0, 1, 0.001)
 
-        # F1-score is defined where β is 1. A β value less than 1
+        # f1-score is defined where β is 1. A β value less than 1
         # favors the precision metric, while values greater than 1
         # favor the recall metric. beta = 0.5 and 2 are the most
         # commonly used measures other than F1 scores.
         # ref: https://en.wikipedia.org/wiki/F-score
 
         beta = 0.5
-        precision_beta, recall_beta, F_beta_scores = [], [], []
+        precision_beta, recall_beta, f_beta_scores = [], [], []
 
         for thresh in thresholds:
             p, r, f, _ = self.F_score_metrics(thresh, beta)
 
             precision_beta.append(p)
             recall_beta.append(r)
-            F_beta_scores.append(f)
+            f_beta_scores.append(f)
 
         # get optimal threshold
-        ix = np.argmax(F_beta_scores)
-        return precision_beta[ix], recall_beta[ix], F_beta_scores[ix], thresholds[ix]
+        ix = np.argmax(f_beta_scores)
+        return precision_beta[ix], recall_beta[ix], f_beta_scores[ix], thresholds[ix]
 
     def prob_metrics(
         self,
