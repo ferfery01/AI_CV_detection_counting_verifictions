@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,7 +19,7 @@ class BinaryClassificationEvaluator:
         neg_predicted: A list containing only predicted similarity scores compared against the false references.
 
         Return:
-            Tuple(Opt_threshold, Precision, Recall, F1_score)
+            Tuple(Opt_threshold, precision, recall, F1_score)
     """
 
     def __init__(
@@ -38,27 +38,30 @@ class BinaryClassificationEvaluator:
         self.pos_predicted = pos_predicted
         self.neg_predicted = neg_predicted
         self.model = model
-        self._youden()
+        self.fpr, self.tpr, self.opt_threshold, self.ix = self._youden()
 
-    def _youden(self) -> None:
+    def _youden(self) -> Tuple[List[float], List[float], float, int]:
         """
         Youden's J statistic: https://en.wikipedia.org/wiki/Youden%27s_J_statistic
         Find the optimal probability cutoff point for a classification model based on the Youden's J statistic.
         """
 
         # Calculate ROC curve
-        self.fpr, self.tpr, threshold = roc_curve(self.target, self.predicted)
-
         # get the best threshold: where J is maximum and J is defined as follow
         #  or J = Sensitivity + Specificity – 1
         #  or J = TPR + (1 – FPR) – 1
         #  or J = sqrt(tpr*(1-fpr))
 
-        J = self.tpr - self.fpr
-        self.ix = np.argmax(J)
-        self.opt_threshold = threshold[self.ix]
+        fpr, tpr, threshold = roc_curve(self.target, self.predicted)
+        J = tpr - fpr
+        ix = np.argmax(J)
+        opt_threshold = threshold[ix]
 
-    def F_score_metrics(self, t=None, beta=1.0) -> Tuple[float, float, float, Union[float, None]]:
+        return fpr, tpr, opt_threshold, ix
+
+    def F_score_metrics(
+        self, t: Optional[float] = None, beta: float = 1.0
+    ) -> Tuple[float, float, float, Union[float, None]]:
         # t is the threshold
         # F1-score is defined where β (beta) is 1 as usual
         # The F-measure was derived so that it measures the
@@ -71,20 +74,14 @@ class BinaryClassificationEvaluator:
 
         self._binary(t)
         n_pos = len(self.pos_predicted)
-        if self.true_pos + self.false_pos == 0:
-            Precision = 0.0
-        else:
-            Precision = self.true_pos / (self.true_pos + self.false_pos)
-
-        Recall = self.true_pos / n_pos
+        precision = self.true_pos / (self.true_pos + self.false_pos + 1e-5)
+        recall = self.true_pos / n_pos
 
         # The Fβ_score score is useful when we want to prioritize
         # one measure while preserving results from the other measure.
-        if Precision == 0 and Recall == 0:
-            F_score = 0
-        else:
-            F_score = (1 + beta**2) * (Precision * Recall) / ((beta**2 * Precision) + Recall)
-        return Precision, Recall, F_score, t
+
+        F_score = (1 + beta**2) * (precision * recall) / ((beta**2 * precision) + recall + 1e-5)
+        return precision, recall, F_score, t
 
     def _binary(self, t) -> None:
         # apply threshold (t) to probabilities to create binary (0 and 1) labels
@@ -104,7 +101,7 @@ class BinaryClassificationEvaluator:
         # ref: https://en.wikipedia.org/wiki/F-score
 
         beta = 0.5
-        Precision_beta, Recall_beta, F_beta_scores = (
+        precision_beta, recall_beta, F_beta_scores = (
             [0.0] * len(thresholds),
             [0.0] * len(thresholds),
             [0.0] * len(thresholds),
@@ -113,13 +110,13 @@ class BinaryClassificationEvaluator:
         for i, t in enumerate(thresholds):
             p, r, f, _ = self.F_score_metrics(t, beta)
 
-            Precision_beta[i] = p
-            Recall_beta[i] = r
+            precision_beta[i] = p
+            recall_beta[i] = r
             F_beta_scores[i] = f
 
         # get optimal threshold
         ix = np.argmax(F_beta_scores)
-        return Precision_beta[ix], Recall_beta[ix], F_beta_scores[ix], thresholds[ix], beta
+        return precision_beta[ix], recall_beta[ix], F_beta_scores[ix], thresholds[ix], beta
 
     def prob_metrics(
         self,
@@ -159,9 +156,6 @@ class BinaryClassificationEvaluator:
         return prob_diff_positive, prob_diff_negative
 
     def plots(self) -> None:
-        self._save_plot()
-
-    def _save_plot(self) -> None:
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1], linestyle="--", label="1:1")
         ax.plot(self.fpr, self.tpr, linewidth=1.5)
