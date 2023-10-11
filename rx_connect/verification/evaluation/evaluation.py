@@ -4,6 +4,7 @@ from typing import Dict, List
 import click
 import numpy as np
 import pandas as pd
+from click.types import FloatRange
 
 from rx_connect import ROOT_DIR, SHARED_PILL_VERIFICATION_DIR, SHARED_RXIMAGE_DATA_DIR
 from rx_connect.core.utils.io_utils import get_matching_files_in_dir
@@ -92,12 +93,22 @@ vectorizer_registery: Dict[str, RxVectorizer] = {
     type=click.Path(path_type=Path),
     help="path to where save the ROC plots",
 )
+@click.option(
+    "-b",
+    "--beta",
+    default=0.5,
+    type=FloatRange(0, 1, clamp=True),
+    help="we value recall beta times more than percision."
+    "beta values < 1 means that we value percision more"
+    "than recall, which is more aligned with our business goal here",
+)
 def main(
     sample_dir: Path,
     data_dir: Path,
     nfalse_ref: int,
     vectorizer_model: str,
     plot_path: Path,
+    beta: float,
     random_seed: int = 0,
 ) -> None:
     """
@@ -212,8 +223,7 @@ def main(
         Recall_beta,
         F1_score_beta,
         opt_threshold_beta,
-        beta,
-    ) = binary_cls_eval.custome_binary_metrics()
+    ) = binary_cls_eval.custome_binary_metrics(beta)
 
     logger.info("\n")
     logger.info("\u253C" * 40)

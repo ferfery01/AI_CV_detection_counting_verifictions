@@ -60,7 +60,7 @@ class BinaryClassificationEvaluator:
         return fpr, tpr, opt_threshold, ix
 
     def F_score_metrics(
-        self, t: Optional[float] = None, beta: float = 1.0
+        self, thresh: Optional[float] = None, beta: float = 1.0
     ) -> Tuple[float, float, float, Union[float, None]]:
         # t is the threshold
         # F1-score is defined where β (beta) is 1 as usual
@@ -69,11 +69,11 @@ class BinaryClassificationEvaluator:
         # who attaches beta times as much importance to recall than percission
         # A β value less than 1 favors the percision metric.
 
-        if t is None:
-            t = self.opt_threshold
+        thresh = thresh or self.opt_threshold
+
         # binarizing the similarity scores saved in true_pos and false_pos using t
-        self.true_pos = sum(x > t for x in self.pos_predicted)
-        self.false_pos = sum(x > t for x in self.neg_predicted)
+        self.true_pos = sum(x > thresh for x in self.pos_predicted)
+        self.false_pos = sum(x > thresh for x in self.neg_predicted)
 
         n_pos = len(self.pos_predicted)
         precision = self.true_pos / (self.true_pos + self.false_pos + 1e-5)
@@ -83,37 +83,33 @@ class BinaryClassificationEvaluator:
         # one measure while preserving results from the other measure.
 
         F_score = (1 + beta**2) * (precision * recall) / ((beta**2 * precision) + recall + 1e-5)
-        return precision, recall, F_score, t
+        return precision, recall, F_score, thresh
 
     def binary_metrics(self) -> Tuple[float, float, float, Union[float, None]]:
         return self.F_score_metrics()
 
-    def custome_binary_metrics(self) -> Tuple[float, float, float, float, float]:
+    def custome_binary_metrics(self, beta) -> Tuple[float, float, float, float]:
         thresholds = np.arange(0, 1, 0.001)
 
         # F1-score is defined where β is 1. A β value less than 1
         # favors the precision metric, while values greater than 1
         # favor the recall metric. beta = 0.5 and 2 are the most
-        # commonly used measures other than F1 scores. Here we use beta = 0.5
+        # commonly used measures other than F1 scores.
         # ref: https://en.wikipedia.org/wiki/F-score
 
         beta = 0.5
-        precision_beta, recall_beta, F_beta_scores = (
-            [0.0] * len(thresholds),
-            [0.0] * len(thresholds),
-            [0.0] * len(thresholds),
-        )
+        precision_beta, recall_beta, F_beta_scores = [], [], []
 
-        for i, t in enumerate(thresholds):
-            p, r, f, _ = self.F_score_metrics(t, beta)
+        for thresh in thresholds:
+            p, r, f, _ = self.F_score_metrics(thresh, beta)
 
-            precision_beta[i] = p
-            recall_beta[i] = r
-            F_beta_scores[i] = f
+            precision_beta.append(p)
+            recall_beta.append(r)
+            F_beta_scores.append(f)
 
         # get optimal threshold
         ix = np.argmax(F_beta_scores)
-        return precision_beta[ix], recall_beta[ix], F_beta_scores[ix], thresholds[ix], beta
+        return precision_beta[ix], recall_beta[ix], F_beta_scores[ix], thresholds[ix]
 
     def prob_metrics(
         self,
