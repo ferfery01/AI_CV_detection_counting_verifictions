@@ -61,7 +61,7 @@ class BinaryClassificationEvaluator:
 
     def F_score_metrics(
         self, thresh: Optional[float] = None, beta: float = 1.0
-    ) -> Tuple[float, float, float, Union[float, None]]:
+    ) -> Tuple[float, float, float, Optional[float]]:
         # t is the threshold
         # f1-score is defined where β (beta) is 1 as usual
         # The F-measure was derived so that it measures the
