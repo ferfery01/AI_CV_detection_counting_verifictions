@@ -57,7 +57,7 @@ class BinaryClassificationEvaluator:
         ix = np.argmax(J)
         opt_threshold = threshold[ix]
 
-        return fpr, tpr, opt_threshold, ix
+        return list(fpr), list(tpr), float(opt_threshold), int(ix)
 
     def F_score_metrics(
         self, thresh: Optional[float] = None, beta: float = 1.0
